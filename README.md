@@ -99,3 +99,4 @@ The onboarding `permissions` screen requests them with an explainer first.
 See [eventual-pondering-parrot.md](../../.claude/plans/eventual-pondering-parrot.md) for the full M0–M6 plan.
 
 Currently scaffolded: **M0 + M1 (auth + onboarding) + M2 plumbing (run start/active/finish wired to backend, GPS task to be implemented).**
+# run-fit
