@@ -7,10 +7,13 @@ import { StatusBar } from "expo-status-bar";
 import { fetchMe } from "@/api/auth";
 import { ApiError } from "@/api/client";
 import { loadToken } from "@/lib/secure";
+import { initSentry, setSentryUser } from "@/lib/sentry";
 import { useAuth } from "@/stores/auth";
 import { useStreak } from "@/stores/streak";
 import { useQuest } from "@/stores/quest";
 import { usePrivacy } from "@/stores/privacy";
+
+initSentry();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,12 +43,15 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
       const token = await loadToken();
       if (!token) {
         setUser(null);
+        setSentryUser(null);
       } else {
         try {
           const user = await fetchMe();
           setUser(user);
+          setSentryUser({ id: user.id, email: user.email });
         } catch {
           setUser(null);
+          setSentryUser(null);
         }
       }
       setReady(true);

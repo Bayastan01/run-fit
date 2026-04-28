@@ -20,15 +20,3 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
   setLoading: (isLoading) => set({ isLoading }),
 }));
-
-export const MOCK_USER: AuthUser = {
-  id: "dev-user",
-  email: "dev@local",
-  displayName: "Dev Runner",
-  avatarUrl: null,
-  level: 3,
-  xp: 420,
-  energy: 100,
-  factionId: null,
-  guildId: null,
-};

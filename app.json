@@ -69,8 +69,24 @@
           "resizeMode": "contain",
           "backgroundColor": "#0B0E14"
         }
+      ],
+      [
+        "expo-task-manager",
+        {}
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "run-fit",
+          "project": "run-fit-mobile"
+        }
       ]
     ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
+    },
     "experiments": {
       "typedRoutes": true
     }

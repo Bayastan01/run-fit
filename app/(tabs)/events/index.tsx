@@ -1,141 +1,123 @@
-import { View, Text, ScrollView, Pressable } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Calendar, Clock, Trophy, Users, Zap } from "lucide-react-native";
+import { useEffect, useState, useCallback } from "react";
+import { View, Text, ScrollView, Pressable, RefreshControl, ActivityIndicator } from "react-native";
+import { router } from "expo-router";
+import { Swords, Users, ChevronRight, Trophy } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
-
-interface Event {
-  id: string;
-  title: string;
-  subtitle: string;
-  prize: string;
-  participants: number;
-  endsIn: string;
-  status: "live" | "upcoming" | "ended";
-  gradient: [string, string];
-  icon: string;
-}
-
-const EVENTS: Event[] = [
-  { id: "1", title: "Король выходных",  subtitle: "Самый длинный маршрут за уикенд", prize: "$500",  participants: 1248, endsIn: "1д 14ч",  status: "live",     gradient: ["#ffd700", "#ffa500"], icon: "👑" },
-  { id: "2", title: "Спринт-баттл",       subtitle: "Лучший темп на 5 км",              prize: "$200",  participants: 612,  endsIn: "6ч 12м",   status: "live",     gradient: ["#00ff88", "#06b6d4"], icon: "⚡" },
-  { id: "3", title: "Захват квартала",   subtitle: "Кто соберёт больше зон",          prize: "$1,000", participants: 89,   endsIn: "стартует через 2д", status: "upcoming", gradient: ["#8b5cf6", "#6366f1"], icon: "🏆" },
-  { id: "4", title: "Марафон месяца",     subtitle: "Кумулятивная дистанция",          prize: "$2,500", participants: 8421, endsIn: "стартует 1 числа",  status: "upcoming", gradient: ["#ef4444", "#dc2626"], icon: "🏃" },
-];
+import { listBattles, type Battle } from "@/api/battles";
+import { fetchNeighbours, type Neighbour } from "@/api/neighbours";
+import { useAuth } from "@/stores/auth";
 
 export default function EventsTab() {
+  const user = useAuth((s) => s.user);
+  const [battles, setBattles] = useState<Battle[]>([]);
+  const [neighbours, setNeighbours] = useState<Neighbour[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [b, n] = await Promise.all([listBattles().catch(() => []), fetchNeighbours(2).catch(() => [])]);
+      setBattles(b);
+      setNeighbours(n);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const activeBattles = battles.filter((b) => b.status === "ACTIVE" || b.status === "SCHEDULED");
+
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ paddingBottom: 100 }}>
+    <ScrollView
+      className="flex-1 bg-bg"
+      contentContainerStyle={{ paddingBottom: 100 }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor="#00ff88" />}
+    >
       <View className="px-5 pt-14">
-        <View className="flex-row items-center justify-between mb-6">
-          <Text className="text-white text-3xl font-bold">События</Text>
-          <View
-            style={{
-              width: 40, height: 40, borderRadius: 20,
-              backgroundColor: "rgba(255,255,255,0.06)",
-              alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <Trophy size={20} color="#a1a1aa" />
-          </View>
-        </View>
+        <Text className="text-white text-3xl font-bold mb-6">Лента</Text>
 
-        {/* Featured banner */}
-        <View className="mb-6 rounded-3xl overflow-hidden">
-          <LinearGradient
-            colors={["#ffd700", "#ffa500"]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={{ padding: 24 }}
-          >
-            <Text style={{ color: "rgba(0,0,0,0.6)", fontSize: 11, letterSpacing: 2, fontWeight: "700" }}>СПЕЦСОБЫТИЕ</Text>
-            <Text style={{ color: "#000", fontSize: 24, fontWeight: "700", marginTop: 6 }}>Король выходных 👑</Text>
-            <Text style={{ color: "rgba(0,0,0,0.7)", fontSize: 13, marginTop: 4 }}>Самый длинный маршрут — забирает $500</Text>
-
-            <View className="flex-row items-center gap-4 mt-5">
-              <View className="flex-row items-center gap-1">
-                <Users size={14} color="#000" />
-                <Text style={{ color: "#000", fontSize: 13, fontWeight: "600" }}>1,248</Text>
-              </View>
-              <View className="flex-row items-center gap-1">
-                <Clock size={14} color="#000" />
-                <Text style={{ color: "#000", fontSize: 13, fontWeight: "600" }}>1д 14ч</Text>
-              </View>
-            </View>
-
-            <Pressable className="mt-5">
+        <Pressable onPress={() => router.push("/battles")} className="mb-3">
+          <GlassCard padding={16} borderColor="rgba(239,68,68,0.30)">
+            <View className="flex-row items-center gap-3">
               <View
                 style={{
-                  backgroundColor: "rgba(0,0,0,0.85)",
-                  borderRadius: 14, paddingVertical: 12, alignItems: "center",
+                  width: 44, height: 44, borderRadius: 22,
+                  backgroundColor: "rgba(239,68,68,0.18)",
+                  alignItems: "center", justifyContent: "center",
                 }}
               >
-                <Text className="text-white font-semibold">Участвовать</Text>
+                <Swords size={22} color="#ef4444" />
               </View>
-            </Pressable>
-          </LinearGradient>
-        </View>
+              <View className="flex-1">
+                <Text className="text-white font-semibold">Активные битвы</Text>
+                <Text className="text-subtle text-xs">{activeBattles.length} в процессе</Text>
+              </View>
+              <ChevronRight size={20} color="#71717a" />
+            </View>
+          </GlassCard>
+        </Pressable>
 
-        {/* Filter pills */}
-        <View className="flex-row gap-2 mb-4">
-          <Pill label="Все"     active />
-          <Pill label="LIVE" />
-          <Pill label="Скоро" />
-          <Pill label="Мои" />
-        </View>
+        <Pressable onPress={() => router.push("/neighbours")} className="mb-5">
+          <GlassCard padding={16} borderColor="rgba(99,102,241,0.30)">
+            <View className="flex-row items-center gap-3">
+              <View
+                style={{
+                  width: 44, height: 44, borderRadius: 22,
+                  backgroundColor: "rgba(99,102,241,0.18)",
+                  alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <Users size={22} color="#6366f1" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-white font-semibold">Соседи</Text>
+                <Text className="text-subtle text-xs">{neighbours.length} в твоём районе</Text>
+              </View>
+              <ChevronRight size={20} color="#71717a" />
+            </View>
+          </GlassCard>
+        </Pressable>
 
-        {/* Event list */}
-        <View className="gap-3">
-          {EVENTS.map((e) => (
-            <GlassCard key={e.id} padding={16}>
-              <View className="flex-row items-center gap-3">
-                <View style={{ width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: `${e.gradient[0]}22`, borderWidth: 1, borderColor: `${e.gradient[0]}44` }}>
-                  <Text style={{ fontSize: 28 }}>{e.icon}</Text>
-                </View>
-
-                <View className="flex-1">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-white font-semibold">{e.title}</Text>
-                    {e.status === "live" && (
-                      <View style={{ backgroundColor: "rgba(0,255,136,0.18)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                        <Text style={{ color: "#00ff88", fontSize: 10, fontWeight: "700" }}>LIVE</Text>
+        {loading ? (
+          <ActivityIndicator color="#00ff88" />
+        ) : activeBattles.length > 0 ? (
+          <>
+            <Text className="text-subtle text-xs uppercase tracking-widest mb-3">Битвы сейчас</Text>
+            <View className="gap-2">
+              {activeBattles.slice(0, 5).map((b) => {
+                const isAttacker = b.attackerUserId === user?.id;
+                return (
+                  <GlassCard key={b.id} padding={14}>
+                    <View className="flex-row items-center gap-3">
+                      <Swords size={18} color={isAttacker ? "#ef4444" : "#06b6d4"} />
+                      <View className="flex-1">
+                        <Text className="text-white text-sm font-semibold">
+                          {isAttacker ? "Ты атакуешь" : "Ты защищаешь"}
+                        </Text>
+                        <Text className="text-subtle text-xs">
+                          Ты: {(((isAttacker ? b.attackerDistanceM : b.defenderDistanceM) / 1000)).toFixed(2)} км
+                          · Соперник: {(((isAttacker ? b.defenderDistanceM : b.attackerDistanceM) / 1000)).toFixed(2)} км
+                        </Text>
                       </View>
-                    )}
-                  </View>
-                  <Text className="text-subtle text-xs">{e.subtitle}</Text>
-                  <View className="flex-row items-center gap-3 mt-2">
-                    <View className="flex-row items-center gap-1">
-                      <Users size={11} color="#71717a" />
-                      <Text className="text-subtle text-xs">{e.participants.toLocaleString("ru")}</Text>
                     </View>
-                    <View className="flex-row items-center gap-1">
-                      <Calendar size={11} color="#71717a" />
-                      <Text className="text-subtle text-xs">{e.endsIn}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View className="items-end">
-                  <Text style={{ color: e.gradient[0], fontSize: 16, fontWeight: "700" }}>{e.prize}</Text>
-                  <Text className="text-subtle text-xs">приз</Text>
-                </View>
-              </View>
-            </GlassCard>
-          ))}
-        </View>
+                  </GlassCard>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <GlassCard padding={20}>
+            <View className="items-center gap-3">
+              <Trophy size={28} color="#a1a1aa" />
+              <Text className="text-subtle text-center">
+                Пока ничего не происходит. Беги — захватывай улицы и провоцируй битвы.
+              </Text>
+            </View>
+          </GlassCard>
+        )}
       </View>
     </ScrollView>
-  );
-}
-
-function Pill({ label, active }: { label: string; active?: boolean }) {
-  return (
-    <View
-      style={{
-        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-        backgroundColor: active ? "rgba(0,255,136,0.2)" : "rgba(255,255,255,0.05)",
-        borderWidth: 1, borderColor: active ? "rgba(0,255,136,0.4)" : "rgba(255,255,255,0.1)",
-      }}
-    >
-      <Text style={{ color: active ? "#00ff88" : "#a1a1aa", fontSize: 13, fontWeight: "600" }}>{label}</Text>
-    </View>
   );
 }

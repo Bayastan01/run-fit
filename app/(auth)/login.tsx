@@ -5,7 +5,7 @@ import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { login } from "@/api/auth";
 import { ApiError } from "@/api/client";
-import { useAuth, MOCK_USER } from "@/stores/auth";
+import { useAuth } from "@/stores/auth";
 
 export default function LoginScreen() {
   const setUser = useAuth((s) => s.setUser);
@@ -58,15 +58,6 @@ export default function LoginScreen() {
         </View>
 
         <Button label="Войти" onPress={onSubmit} loading={submitting} />
-
-        <Button
-          label="Пропустить — офлайн-превью"
-          variant="ghost"
-          onPress={() => {
-            setUser(MOCK_USER);
-            router.replace("/");
-          }}
-        />
 
         <View className="flex-row justify-center gap-2 pt-2">
           <Text className="text-subtle">Нет аккаунта?</Text>

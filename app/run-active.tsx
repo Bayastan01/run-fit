@@ -12,6 +12,8 @@ import { usePrivacy } from "@/stores/privacy";
 import { finishRun, uploadPoints } from "@/api/runs";
 import { useRunTracker } from "@/features/tracking/useRunTracker";
 import { useChain, CHAIN_DEFAULTS } from "@/features/tracking/useChain";
+import { startBackgroundLocation, stopBackgroundLocation } from "@/features/tracking/backgroundTask";
+import { pointBuffer } from "@/features/tracking/pointBuffer";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -32,6 +34,17 @@ export default function ActiveRun() {
 
   const [state, controls] = useRunTracker(runId !== null && startedAt !== null);
   const chain = useChain(state.activity.scoring);
+
+  // Background GPS — фоновое отслеживание + foreground service notification
+  useEffect(() => {
+    if (!runId) return;
+    let active = true;
+    startBackgroundLocation(runId).catch(() => {});
+    return () => {
+      active = false;
+      stopBackgroundLocation().catch(() => {});
+    };
+  }, [runId]);
 
   // Push chain multiplier into tracker so it counts weighted distance.
   useEffect(() => {
@@ -62,23 +75,21 @@ export default function ActiveRun() {
   }, [state.paused, state.autoPaused]);
 
   // Periodic flush of points to backend (15s).
+  // Foreground tracker writes through MMKV buffer for offline retry.
   useEffect(() => {
     if (!runId) return;
-    const t = setInterval(async () => {
+    const t = setInterval(() => {
       const drained = controls.flushPoints();
-      if (drained.length === 0) return;
-      try {
-        await uploadPoints(
-          runId,
-          drained.map((p) => ({
-            ts: new Date(p.ts).toISOString(),
-            lat: p.lat, lng: p.lng,
-            accuracyM: p.accuracyM ?? undefined,
-            speedMps: p.speedMps,
-            altitude: p.altitude ?? undefined,
-          })),
-        );
-      } catch {}
+      if (drained.length > 0) {
+        pointBuffer.pushMany(drained.map((p) => ({
+          ts: p.ts,
+          lat: p.lat, lng: p.lng,
+          accuracyM: p.accuracyM ?? null,
+          speedMps: p.speedMps,
+          altitude: p.altitude ?? null,
+        })));
+      }
+      void pointBuffer.flush();
     }, 15_000);
     return () => clearInterval(t);
   }, [runId]);
@@ -103,14 +114,16 @@ export default function ActiveRun() {
     try {
       const tail = controls.flushPoints();
       if (tail.length > 0) {
-        await uploadPoints(runId!, tail.map((p) => ({
-          ts: new Date(p.ts).toISOString(),
+        pointBuffer.pushMany(tail.map((p) => ({
+          ts: p.ts,
           lat: p.lat, lng: p.lng,
-          accuracyM: p.accuracyM ?? undefined,
+          accuracyM: p.accuracyM ?? null,
           speedMps: p.speedMps,
-          altitude: p.altitude ?? undefined,
-        }))).catch(() => {});
+          altitude: p.altitude ?? null,
+        })));
       }
+      await pointBuffer.flush();
+      await stopBackgroundLocation().catch(() => {});
       await finishRun(runId!).catch(() => {});
       if (state.scoredDistanceM > 100) {
         recordStreakRun();

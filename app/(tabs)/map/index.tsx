@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { View, Text, Pressable, Modal } from "react-native";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { View, Text, Pressable, Modal, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -7,48 +7,80 @@ import {
 } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
 import { IconButton } from "@/components/Button";
-import { TerritoryMap } from "@/components/TerritoryMap";
-import {
-  FALLBACK_CENTER,
-  generatePath,
-  generateTerritories,
-  type LatLng,
-  type Territory,
-} from "@/data/mockTerritories";
+import { TerritoryMap, type LatLng } from "@/components/TerritoryMap";
 import { useUserLocation } from "@/features/location/useUserLocation";
 import { startRun } from "@/api/runs";
+import { fetchStreets, type StreetSegmentFeature, type BBox } from "@/api/streets";
+import { fetchBalance, type Balances } from "@/api/wallet";
+import { purchaseBoost } from "@/api/boosts";
 import { useActiveRun } from "@/stores/activeRun";
+import { useRegionChannel } from "@/features/realtime/useRegionChannel";
+
+const FALLBACK_CENTER: LatLng = { latitude: 55.7558, longitude: 37.6173 };
 
 export default function MapTab() {
-  const [selected, setSelected] = useState<Territory | null>(null);
+  const [selected, setSelected] = useState<StreetSegmentFeature | null>(null);
   const [showBoosts, setShowBoosts] = useState(false);
+  const [segments, setSegments] = useState<StreetSegmentFeature[]>([]);
+  const [bbox, setBbox] = useState<BBox | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [balances, setBalances] = useState<Balances | null>(null);
   const startActive = useActiveRun((s) => s.start);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { coord, granted, error } = useUserLocation();
+  const { coord, error } = useUserLocation();
 
-  // Center: user GPS if available, otherwise fallback (Moscow). Recompute mock
-  // territories so they sit around the user's neighbourhood.
   const center: LatLng = coord
     ? { latitude: coord.lat, longitude: coord.lng }
     : FALLBACK_CENTER;
 
-  const territories = useMemo(() => generateTerritories(center), [center.latitude, center.longitude]);
-  const path        = useMemo(() => generatePath(center),        [center.latitude, center.longitude]);
+  const onBoundsChanged = useCallback((b: BBox) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setBbox(b), 350);
+  }, []);
 
-  const totalEarnings = useMemo(
-    () => territories.filter((t) => t.owner === "user").reduce((s, t) => s + t.earnings, 0),
-    [territories],
-  );
-  const contestedCount = territories.filter((t) => t.owner === "user" && t.status === "contested").length;
+  useEffect(() => {
+    if (!bbox) return;
+    let alive = true;
+    setLoading(true);
+    fetchStreets(bbox)
+      .then((c) => { if (alive) setSegments(c.features); })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [bbox]);
+
+  useEffect(() => {
+    fetchBalance().then(setBalances).catch(() => {});
+  }, []);
+
+  useRegionChannel("global", useCallback((u) => {
+    setSegments((prev) =>
+      prev.map((s) =>
+        u.segmentIds.includes(s.properties.id)
+          ? { ...s, properties: { ...s.properties, factionId: u.factionId, ownerId: u.userId, isMine: false } }
+          : s,
+      ),
+    );
+  }, []));
+
+  const ownedSegments = segments.filter((s) => s.properties.isMine);
 
   async function onStartRun() {
     try {
       const { runId } = await startRun();
       startActive(runId);
-    } catch {
-      startActive(`dev-run-${Date.now()}`);
-    }
-    router.push("/run-active");
+      router.push("/run-active");
+    } catch {}
+  }
+
+  async function onBuyBoost(kind: "EARNINGS_2X" | "SHIELD_24H" | "ENERGY_REFILL") {
+    try {
+      await purchaseBoost(kind);
+      const b = await fetchBalance();
+      setBalances(b);
+      setShowBoosts(false);
+    } catch {}
   }
 
   const locationStatus =
@@ -59,16 +91,15 @@ export default function MapTab() {
 
   return (
     <View className="flex-1 bg-bg">
-      {/* Real OSM map (Leaflet inside WebView) */}
       <TerritoryMap
-        territories={territories}
-        path={path}
+        segments={segments}
+        path={[]}
         center={center}
         userLocation={coord ? { latitude: coord.lat, longitude: coord.lng } : null}
         onSelect={setSelected}
+        onBoundsChanged={onBoundsChanged}
       />
 
-      {/* Top bar */}
       <View className="absolute left-0 right-0 top-12 px-4">
         <View className="flex-row items-center justify-between">
           <Pressable onPress={() => router.push("/(tabs)/wallet")}>
@@ -76,14 +107,19 @@ export default function MapTab() {
               <View className="flex-row items-center gap-3">
                 <DollarSign size={20} color="#00ff88" />
                 <View>
-                  <Text className="text-subtle text-[10px] uppercase tracking-widest">Сегодня</Text>
-                  <Text className="text-primary text-lg font-bold">+${totalEarnings.toFixed(2)}</Text>
+                  <Text className="text-subtle text-[10px] uppercase tracking-widest">Баланс</Text>
+                  <Text className="text-primary text-lg font-bold">{(balances?.COIN ?? 0).toFixed(2)}</Text>
                 </View>
               </View>
             </GlassCard>
           </Pressable>
 
-          <IconButton size={48} icon={<Text style={{ fontSize: 22 }}>⚡</Text>} />
+          <View className="flex-row gap-2">
+            {loading && <ActivityIndicator color="#00ff88" />}
+            <Pressable onPress={() => router.push("/(tabs)/profile")}>
+              <IconButton size={48} icon={<Text style={{ fontSize: 22 }}>⚡</Text>} />
+            </Pressable>
+          </View>
         </View>
 
         {locationStatus && (
@@ -99,21 +135,20 @@ export default function MapTab() {
           </View>
         )}
 
-        {contestedCount > 0 && (
+        {ownedSegments.length > 0 && (
           <View
             className="mt-3 rounded-2xl px-4 py-3 flex-row items-center gap-3"
-            style={{ backgroundColor: "rgba(239,68,68,0.18)", borderWidth: 1, borderColor: "rgba(239,68,68,0.4)" }}
+            style={{ backgroundColor: "rgba(0,255,136,0.10)", borderWidth: 1, borderColor: "rgba(0,255,136,0.30)" }}
           >
-            <AlertTriangle size={20} color="#ef4444" />
+            <Crown size={18} color="#00ff88" />
             <View className="flex-1">
-              <Text className="text-white text-sm font-semibold">{contestedCount} территории под атакой</Text>
-              <Text className="text-subtle text-xs">Защити, иначе теряешь доход</Text>
+              <Text className="text-white text-sm font-semibold">{ownedSegments.length} улиц в этом районе твои</Text>
+              <Text className="text-subtle text-xs">Беги по ним, чтобы защитить</Text>
             </View>
           </View>
         )}
       </View>
 
-      {/* FAB row */}
       <View className="absolute left-0 right-0 bottom-36 px-8 flex-row items-center justify-between">
         <IconButton
           size={56}
@@ -138,7 +173,6 @@ export default function MapTab() {
         <IconButton size={56} icon={<Navigation size={24} color="#fff" />} />
       </View>
 
-      {/* Territory detail modal */}
       <Modal visible={selected != null} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
         <View className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
           {selected && (
@@ -147,8 +181,7 @@ export default function MapTab() {
               style={{
                 backgroundColor: "#0a0a0a",
                 borderTopWidth: 2,
-                borderTopColor:
-                  selected.status === "high-value" && selected.owner === "user" ? "#ffd700" : selected.color,
+                borderTopColor: selected.properties.factionColor ?? "#3f3f46",
               }}
             >
               <View className="flex-row items-center justify-between mb-6">
@@ -157,22 +190,22 @@ export default function MapTab() {
                     style={{
                       width: 52, height: 52, borderRadius: 26,
                       alignItems: "center", justifyContent: "center",
-                      backgroundColor: `${selected.color}33`,
-                      borderWidth: 2, borderColor: selected.color,
+                      backgroundColor: `${selected.properties.factionColor ?? "#3f3f46"}33`,
+                      borderWidth: 2, borderColor: selected.properties.factionColor ?? "#3f3f46",
                     }}
                   >
-                    <Text style={{ fontSize: 24 }}>{selected.ownerAvatar}</Text>
+                    <Text style={{ fontSize: 22, color: "#fff" }}>
+                      {selected.properties.isMine ? "⚡" : selected.properties.ownerId ? "⚔️" : "·"}
+                    </Text>
                   </View>
                   <View>
-                    <View className="flex-row items-center gap-2">
-                      <Text className="text-white text-lg font-semibold">{selected.ownerName}</Text>
-                      {selected.isKingZone && <Crown size={16} color="#ffd700" />}
-                    </View>
+                    <Text className="text-white text-lg font-semibold">
+                      {selected.properties.streetName ?? "Без названия"}
+                    </Text>
                     <Text className="text-subtle text-xs">
-                      {selected.status === "contested"  ? "⚔️ Под атакой" :
-                       selected.status === "high-value" ? (selected.isKingZone ? "👑 Король-зона" : "💎 Высокая ценность") :
-                       selected.status === "expiring"   ? "⏰ Скоро истечёт" :
-                       "Твоя территория"}
+                      {selected.properties.isMine ? "Твоя территория"
+                        : selected.properties.ownerId ? `Владелец: ${selected.properties.ownerName ?? "?"}`
+                        : "Свободная улица"}
                     </Text>
                   </View>
                 </View>
@@ -183,57 +216,26 @@ export default function MapTab() {
 
               <View className="flex-row gap-3 mb-4">
                 <View className="flex-1 rounded-2xl p-4" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
-                  <Text className="text-subtle text-xs">Доход / 24ч</Text>
-                  <Text style={{ color: selected.color, fontSize: 22, fontWeight: "700", marginTop: 4 }}>
-                    ${selected.earnings.toFixed(2)}
+                  <Text className="text-subtle text-xs">Длина</Text>
+                  <Text className="text-white text-xl font-semibold mt-1">
+                    {Math.round(selected.properties.lengthM)} м
                   </Text>
                 </View>
                 <View className="flex-1 rounded-2xl p-4" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
-                  <Text className="text-subtle text-xs">Осталось</Text>
-                  <Text className="text-white text-xl font-semibold mt-1">{selected.timeRemaining}</Text>
+                  <Text className="text-subtle text-xs">Защита / Атаки</Text>
+                  <Text className="text-white text-xl font-semibold mt-1">
+                    {selected.properties.defenseCount} / {selected.properties.flipCount}
+                  </Text>
                 </View>
               </View>
 
-              {selected.pendingAmount ? (
-                <View
-                  className="rounded-2xl p-4 mb-4"
-                  style={{
-                    backgroundColor:
-                      selected.status === "high-value" && selected.owner === "user"
-                        ? "rgba(255,215,0,0.18)"
-                        : `${selected.color}22`,
-                    borderWidth: 1,
-                    borderColor:
-                      selected.status === "high-value" && selected.owner === "user" ? "#ffd700" : selected.color,
-                  }}
-                >
-                  <Text className="text-subtle text-xs">💰 Готово к получению</Text>
-                  <Text
-                    style={{
-                      color: selected.status === "high-value" && selected.owner === "user" ? "#ffd700" : selected.color,
-                      fontSize: 28, fontWeight: "700", marginTop: 4,
-                    }}
-                  >
-                    ${selected.pendingAmount.toFixed(2)}
-                  </Text>
-                </View>
-              ) : null}
-
-              <Pressable>
+              <Pressable onPress={() => { setSelected(null); onStartRun(); }}>
                 <LinearGradient
-                  colors={
-                    selected.owner === "user"
-                      ? selected.status === "high-value"
-                        ? ["#ffd700", "#ffa500"]
-                        : [selected.color, selected.color]
-                      : ["#ef4444", "#dc2626"]
-                  }
+                  colors={selected.properties.isMine ? ["#00ff88", "#00cc6f"] : ["#ef4444", "#dc2626"]}
                   style={{ borderRadius: 18, paddingVertical: 16, alignItems: "center" }}
                 >
                   <Text style={{ color: "#000", fontWeight: "700", fontSize: 16 }}>
-                    {selected.owner === "user"
-                      ? selected.pendingAmount ? "💰 Забрать доход" : "🛡️ Защитить территорию"
-                      : "⚔️ Атаковать"}
+                    {selected.properties.isMine ? "🛡️ Защитить (беги)" : "⚔️ Захватить (беги)"}
                   </Text>
                 </LinearGradient>
               </Pressable>
@@ -242,7 +244,6 @@ export default function MapTab() {
         </View>
       </Modal>
 
-      {/* Power-Ups modal */}
       <Modal visible={showBoosts} transparent animationType="slide" onRequestClose={() => setShowBoosts(false)}>
         <View className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
           <View
@@ -254,26 +255,31 @@ export default function MapTab() {
               <Pressable onPress={() => setShowBoosts(false)}><X size={24} color="#a1a1aa" /></Pressable>
             </View>
 
+            <Text className="text-subtle text-sm mb-4">
+              Баланс: {(balances?.COIN ?? 0).toFixed(2)} RUN · {balances?.ENERGY ?? 0} энергии
+            </Text>
+
             <View className="gap-3">
               <BoostCard
                 icon={<Zap size={22} color="#00ff88" />}
                 title="2× к доходу"
-                subtitle="6 часов"
-                price="$2.99"
+                subtitle="6 часов · 5 RUN"
                 colors={["#00ff88", "#00cc6f"]}
-                badgeBg="rgba(0,255,136,0.18)"
-                priceColor="#00ff88"
-                buttonTextColor="#000"
+                onPress={() => onBuyBoost("EARNINGS_2X")}
               />
               <BoostCard
                 icon={<Shield size={22} color="#8b5cf6" />}
                 title="Щит территории"
-                subtitle="Защита 24 часа"
-                price="$4.99"
+                subtitle="Защита 24ч · 8 RUN"
                 colors={["#8b5cf6", "#6366f1"]}
-                badgeBg="rgba(139,92,246,0.18)"
-                priceColor="#8b5cf6"
-                buttonTextColor="#fff"
+                onPress={() => onBuyBoost("SHIELD_24H")}
+              />
+              <BoostCard
+                icon={<Zap size={22} color="#f59e0b" />}
+                title="Залить энергию"
+                subtitle="до 100 · 2 RUN"
+                colors={["#f59e0b", "#dc6803"]}
+                onPress={() => onBuyBoost("ENERGY_REFILL")}
               />
             </View>
           </View>
@@ -287,34 +293,33 @@ interface BoostCardProps {
   icon: React.ReactNode;
   title: string;
   subtitle: string;
-  price: string;
   colors: [string, string];
-  badgeBg: string;
-  priceColor: string;
-  buttonTextColor: string;
+  onPress: () => void;
 }
 
-function BoostCard({ icon, title, subtitle, price, colors, badgeBg, priceColor, buttonTextColor }: BoostCardProps) {
+function BoostCard({ icon, title, subtitle, colors, onPress }: BoostCardProps) {
   return (
     <View
       className="rounded-2xl p-4"
       style={{ backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: `${colors[0]}33` }}
     >
-      <View className="flex-row items-center justify-between mb-3">
-        <View className="flex-row items-center gap-3">
-          <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: badgeBg }}>
-            {icon}
-          </View>
-          <View>
-            <Text className="text-white font-semibold">{title}</Text>
-            <Text className="text-subtle text-xs">{subtitle}</Text>
-          </View>
+      <View className="flex-row items-center gap-3 mb-3">
+        <View
+          style={{
+            width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center",
+            backgroundColor: `${colors[0]}30`,
+          }}
+        >
+          {icon}
         </View>
-        <Text style={{ color: priceColor, fontSize: 18, fontWeight: "600" }}>{price}</Text>
+        <View className="flex-1">
+          <Text className="text-white font-semibold">{title}</Text>
+          <Text className="text-subtle text-xs">{subtitle}</Text>
+        </View>
       </View>
-      <Pressable>
+      <Pressable onPress={onPress}>
         <LinearGradient colors={colors} style={{ borderRadius: 14, paddingVertical: 12, alignItems: "center" }}>
-          <Text style={{ color: buttonTextColor, fontWeight: "600" }}>Активировать</Text>
+          <Text style={{ color: "#000", fontWeight: "600" }}>Купить</Text>
         </LinearGradient>
       </Pressable>
     </View>
