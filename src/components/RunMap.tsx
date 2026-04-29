@@ -159,21 +159,26 @@ function buildHtml(center: LatLng, color: string): string {
 
     var startMarker = null;
     var path = [];
-    var poly = L.polyline([], { color: COLOR, weight: 5, lineCap: 'round', lineJoin: 'round' }).addTo(map);
-    // Closing dashed line from start → current (INTVL-style)
+    // INTVL-style: claim polygon under everything, then dashed close-line,
+    // then real route polyline on top.
+    var areaPoly = L.polygon([], {
+      color: '#ef4444',
+      weight: 0,
+      fillColor: '#ef4444',
+      fillOpacity: 0.30,
+    }).addTo(map);
     var closeLine = L.polyline([], {
-      color: '#000',
+      color: '#0a0a0a',
       weight: 3,
       opacity: 0.85,
       dashArray: '6,8',
       lineCap: 'round',
     }).addTo(map);
-    // Filled polygon = real path + reverse close → claim area
-    var areaPoly = L.polygon([], {
+    var poly = L.polyline([], {
       color: COLOR,
-      weight: 0,
-      fillColor: COLOR,
-      fillOpacity: 0.18,
+      weight: 5,
+      lineCap: 'round',
+      lineJoin: 'round',
     }).addTo(map);
     var userMarker = null;
     var userPulse = null;
@@ -215,8 +220,9 @@ function buildHtml(center: LatLng, color: string): string {
       refreshClaimShapes();
     }
 
+    // Only the area-claim polygon uses the dynamic color (red while loop
+    // is open, green when closed). Route polyline stays in activity tone.
     function setColor(c) {
-      poly.setStyle({ color: c });
       areaPoly.setStyle({ color: c, fillColor: c });
     }
 

@@ -73,7 +73,38 @@ export default function ActiveRun() {
     }
   }, [state.points.length, state.scoredDistanceM]);
 
-  const claimColor = areaClosed ? "#00ff88" : state.activity.color;
+  // INTVL-style: red while loop is open (contestable), green when closed.
+  const claimColor = areaClosed ? "#00ff88" : "#ef4444";
+
+  // Live area (m²) of the polygon = real path + straight close.
+  // Equirectangular approximation around the centroid latitude — accurate
+  // to ~0.5 % for sub-kilometre loops, plenty for live UI.
+  const liveAreaM2 = useMemo(() => {
+    if (state.points.length < 2) return 0;
+    const start = state.points[0];
+    const end = state.points[state.points.length - 1];
+    const ring: { lat: number; lng: number }[] = [
+      ...state.points.map((p) => ({ lat: p.lat, lng: p.lng })),
+      { lat: start.lat, lng: start.lng },
+    ];
+    if (ring.length < 4) return 0;
+    const meanLat = ring.reduce((s, p) => s + p.lat, 0) / ring.length;
+    const cosLat = Math.cos((meanLat * Math.PI) / 180);
+    const xy = ring.map((p) => [p.lng * 111320 * cosLat, p.lat * 110540] as const);
+    let sum = 0;
+    for (let i = 0; i < xy.length - 1; i++) {
+      sum += xy[i][0] * xy[i + 1][1] - xy[i + 1][0] * xy[i][1];
+    }
+    void end;
+    return Math.abs(sum) / 2;
+  }, [state.points.length]);
+
+  function formatArea(m2: number): string {
+    if (m2 < 1) return "—";
+    if (m2 < 1000) return `${Math.round(m2)} м²`;
+    if (m2 < 1_000_000) return `${(m2 / 10_000).toFixed(2)} га`;
+    return `${(m2 / 1_000_000).toFixed(2)} км²`;
+  }
 
   // Background GPS — фоновое отслеживание + foreground service notification
   useEffect(() => {
@@ -273,6 +304,12 @@ export default function ActiveRun() {
                  label="Всего" value={`${totalKm.toFixed(2)} км`} valueColor="#fff" />
             <Row icon={<DollarSign size={14} color="#ffd700" />}
                  label="Зачёт × множитель" value={`${weightedKm.toFixed(2)} км`} valueColor="#ffd700" />
+            <Row
+              icon={<View style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: claimColor, opacity: 0.6 }} />}
+              label={areaClosed ? "Захвачено" : "Контест-зона"}
+              value={formatArea(liveAreaM2)}
+              valueColor={claimColor}
+            />
           </View>
         </GlassCard>
 
