@@ -103,6 +103,12 @@ export function useRunTracker(active: boolean, options: Options = {}): [RunTrack
   const batteryRef = useRef<number | null>(null);
   const subRef = useRef<Location.LocationSubscription | null>(null);
   const profileRef = useRef<AdaptiveProfile>(gpsProfile);
+  // Mirror pause state into refs so the GPS callback (closure-captured)
+  // always reads the latest value instead of a stale render snapshot.
+  const pausedRef = useRef(paused);
+  const autoPausedRef = useRef(autoPaused);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => { autoPausedRef.current = autoPaused; }, [autoPaused]);
 
   // Battery polling — every 30s
   useEffect(() => {
@@ -153,7 +159,7 @@ export function useRunTracker(active: boolean, options: Options = {}): [RunTrack
     }
 
     function onLocation(loc: Location.LocationObject) {
-      if (cancelled || paused || autoPaused) return;
+      if (cancelled || pausedRef.current || autoPausedRef.current) return;
       if (inPrivacyRef.current) return;
 
       const { latitude, longitude, accuracy, speed, altitude } = loc.coords;
@@ -183,13 +189,13 @@ export function useRunTracker(active: boolean, options: Options = {}): [RunTrack
         if (stillSinceRef.current == null) stillSinceRef.current = ts;
         const stillFor = ts - (stillSinceRef.current ?? ts);
         setStationaryMs(stillFor);
-        if (stillFor >= autoPauseAfterMs && !autoPaused) {
+        if (stillFor >= autoPauseAfterMs && !autoPausedRef.current) {
           setAutoPaused(true);
         }
       } else {
         stillSinceRef.current = null;
         setStationaryMs(0);
-        if (autoPaused) setAutoPaused(false);
+        if (autoPausedRef.current) setAutoPaused(false);
       }
 
       const pt: RunPointSample = {

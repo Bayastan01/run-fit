@@ -23,6 +23,8 @@ interface KV {
   get(key: string): string | null;
   set(key: string, value: string): void;
   delete(key: string): void;
+  /** Resolves when any pending async writes have flushed to disk. */
+  drain(): Promise<void>;
 }
 
 let kv: KV | null = null;
@@ -38,6 +40,7 @@ function getKV(): KV {
       get: (k) => mm.getString(k) ?? null,
       set: (k, v) => mm.set(k, v),
       delete: (k) => mm.delete(k),
+      drain: () => Promise.resolve(),
     };
     return kv;
   } catch {
@@ -49,12 +52,24 @@ function getKV(): KV {
       removeItem(key: string): Promise<void>;
     };
     const cache = new Map<string, string>();
-    AsyncStorage.getItem(KEY_RUN_ID).then((v) => { if (v) cache.set(KEY_RUN_ID, v); }).catch(() => {});
-    AsyncStorage.getItem(KEY_POINTS).then((v) => { if (v) cache.set(KEY_POINTS, v); }).catch(() => {});
+    let pending: Promise<unknown> = Promise.all([
+      AsyncStorage.getItem(KEY_RUN_ID).then((v) => { if (v) cache.set(KEY_RUN_ID, v); }).catch(() => {}),
+      AsyncStorage.getItem(KEY_POINTS).then((v) => { if (v) cache.set(KEY_POINTS, v); }).catch(() => {}),
+    ]);
+    function chain(p: Promise<unknown>): void {
+      pending = pending.then(() => p).catch(() => {});
+    }
     kv = {
       get: (k) => cache.get(k) ?? null,
-      set: (k, v) => { cache.set(k, v); void AsyncStorage.setItem(k, v); },
-      delete: (k) => { cache.delete(k); void AsyncStorage.removeItem(k); },
+      set: (k, v) => {
+        cache.set(k, v);
+        chain(AsyncStorage.setItem(k, v));
+      },
+      delete: (k) => {
+        cache.delete(k);
+        chain(AsyncStorage.removeItem(k));
+      },
+      drain: () => pending.then(() => undefined).catch(() => undefined),
     };
     return kv;
   }
@@ -71,10 +86,12 @@ class PointBuffer {
     this.startFlushTimer();
   }
 
-  detachRun(): void {
+  async detachRun(): Promise<void> {
     this.stopFlushTimer();
-    void this.flush();
-    getKV().delete(KEY_RUN_ID);
+    await this.flush().catch(() => {});
+    const s = getKV();
+    s.delete(KEY_RUN_ID);
+    await s.drain().catch(() => {});
   }
 
   push(p: BufferedPoint): void {

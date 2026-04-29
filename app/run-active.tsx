@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, Pressable, Animated } from "react-native";
+import { View, Text, Pressable, Animated, Alert } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Pause, Play, Square, MapPin, DollarSign, TrendingUp, Footprints, Battery } from "lucide-react-native";
@@ -151,6 +151,7 @@ export default function ActiveRun() {
 
   async function onFinish() {
     setBusy(true);
+    let success = false;
     try {
       const tail = controls.flushPoints();
       if (tail.length > 0) {
@@ -162,17 +163,33 @@ export default function ActiveRun() {
           altitude: p.altitude ?? null,
         })));
       }
+      // Flush any pending points first; if it fails, retry once.
       await pointBuffer.flush();
+      await pointBuffer.flush().catch(() => {});
       await stopBackgroundLocation().catch(() => {});
-      await finishRun(runId!).catch(() => {});
-      if (state.scoredDistanceM > 100) {
+
+      // CRITICAL: do not swallow errors here — if finish fails the run
+      // stays ACTIVE on the server and history would be empty.
+      const result = await finishRun(runId!);
+      success = result.status === "FINISHED" || result.status === "INVALID";
+
+      if (result.status === "FINISHED" && state.scoredDistanceM > 100) {
         recordStreakRun();
         markFirstRun();
       }
+    } catch (err) {
+      console.warn("[finish] failed:", err);
+      Alert.alert(
+        "Не удалось завершить",
+        "Связь с сервером прервалась. Точки сохранены — попробуй снова через минуту.",
+      );
     } finally {
-      reset();
       setBusy(false);
-      router.replace("/(tabs)/map");
+      if (success) {
+        reset();
+        router.replace("/(tabs)/map");
+      }
+      // If failed: keep activeRun in state so user can retry the finish button.
     }
   }
 

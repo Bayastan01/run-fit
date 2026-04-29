@@ -49,25 +49,36 @@ export function RunMap({ points, current, color = "#00ff88", claimColor }: Props
   );
 
   // Flush queued JS once the page is loaded.
+  // We also re-send the entire path in case the React useEffects ran while
+  // the WebView was still loading and left commands stranded in the queue.
   function onLoadEnd(): void {
-    setReady(true);
     if (ref.current) {
       const drained = queue.current.splice(0, queue.current.length);
-      if (drained.length > 0) {
-        ref.current.injectJavaScript(drained.join("\n") + " true;");
-      }
+      const fullPath = JSON.stringify(points.map((p) => [p.lat, p.lng]));
+      const replay = points.length > 0
+        ? `window.runfit && window.runfit.appendPath(${fullPath});`
+        : "";
+      const cur = current
+        ? `window.runfit && window.runfit.setUser(${current.lat}, ${current.lng});`
+        : "";
+      const all = [...drained, replay, cur].filter(Boolean).join("\n");
+      if (all) ref.current.injectJavaScript(all + " true;");
+      // Sync counter to actual path length we just sent.
+      lastSentLen.current = points.length;
     }
+    setReady(true);
   }
 
   // Push every new tail point to map.
   useEffect(() => {
+    if (!ready) return; // onLoadEnd will replay everything.
     if (points.length === 0) return;
     if (points.length === lastSentLen.current) return;
     const tail = points.slice(lastSentLen.current);
     lastSentLen.current = points.length;
     const arr = JSON.stringify(tail.map((p) => [p.lat, p.lng]));
     send(`window.runfit && window.runfit.appendPath(${arr});`);
-  }, [points.length, send]);
+  }, [points.length, send, ready]);
 
   // Push live user position.
   useEffect(() => {
