@@ -247,12 +247,13 @@ function buildHtml(center: LatLng, color: string): string {
         closeLine.setLatLngs([start, ll]);
         areaPoly.setLatLngs([path.concat([ll, start])]);
       }
-      // First fix → snap. Subsequent → pan smoothly.
+      // First fix → snap. Subsequent → fast pan (0.25 s) so the dot
+      // doesn't visibly trail the runner on real-world pace.
       if (firstFix) {
         map.setView(ll, 17, { animate: false });
         firstFix = false;
       } else {
-        map.panTo(ll, { animate: true, duration: 0.6 });
+        map.panTo(ll, { animate: true, duration: 0.25, easeLinearity: 0.5 });
       }
     }
 

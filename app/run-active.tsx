@@ -231,9 +231,11 @@ export default function ActiveRun() {
         <RunMap
           points={state.points.map((p) => ({ lat: p.lat, lng: p.lng }))}
           current={(() => {
+            // Priority: live GPS subscription (no accuracy/speed filter, fast).
+            // Fallback to last tracker point only if liveCoord is missing.
+            if (liveCoord) return { lat: liveCoord.lat, lng: liveCoord.lng };
             const last = state.points[state.points.length - 1];
             if (last) return { lat: last.lat, lng: last.lng };
-            if (liveCoord) return { lat: liveCoord.lat, lng: liveCoord.lng };
             return null;
           })()}
           color={state.activity.color}

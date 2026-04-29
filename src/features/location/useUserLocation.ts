@@ -69,9 +69,9 @@ export function useUserLocation(): UserLocationState {
 
         sub = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 1500,
-            distanceInterval: 5,
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 1000,
+            distanceInterval: 1,
           },
           (loc) => {
             if (cancelled) return;
