@@ -10,8 +10,14 @@ interface Props {
   /** Latest live position — passed in from the screen even before the
    *  tracker has accumulated points (e.g. on first GPS lock). */
   current?: LatLng | null;
-  /** Activity color — line and marker tint. */
+  /** Activity color — start dot, user pulse, route polyline. */
   color?: string;
+  /**
+   * Claim-area tint. Pass green when the loop is "yours" (closed safely
+   * back to start), red when contested (enemy nearby, low chain etc).
+   * Default = `color`.
+   */
+  claimColor?: string;
 }
 
 /**
@@ -21,7 +27,7 @@ interface Props {
  * We queue every JS command until WebView fires onLoadEnd, then flush.
  * Otherwise the very first setUser/appendPath gets dropped on cold start.
  */
-export function RunMap({ points, current, color = "#00ff88" }: Props) {
+export function RunMap({ points, current, color = "#00ff88", claimColor }: Props) {
   const ref = useRef<WebView | null>(null);
   const [ready, setReady] = useState(false);
   const queue = useRef<string[]>([]);
@@ -68,6 +74,12 @@ export function RunMap({ points, current, color = "#00ff88" }: Props) {
     if (!current) return;
     send(`window.runfit && window.runfit.setUser(${current.lat}, ${current.lng});`);
   }, [current?.lat, current?.lng, send]);
+
+  // Push color/claim-color updates without rebuilding the WebView.
+  useEffect(() => {
+    const c = claimColor ?? color;
+    send(`window.runfit && window.runfit.setColor(${JSON.stringify(c)});`);
+  }, [color, claimColor, send]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
@@ -137,6 +149,21 @@ function buildHtml(center: LatLng, color: string): string {
     var startMarker = null;
     var path = [];
     var poly = L.polyline([], { color: COLOR, weight: 5, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+    // Closing dashed line from start → current (INTVL-style)
+    var closeLine = L.polyline([], {
+      color: '#000',
+      weight: 3,
+      opacity: 0.85,
+      dashArray: '6,8',
+      lineCap: 'round',
+    }).addTo(map);
+    // Filled polygon = real path + reverse close → claim area
+    var areaPoly = L.polygon([], {
+      color: COLOR,
+      weight: 0,
+      fillColor: COLOR,
+      fillOpacity: 0.18,
+    }).addTo(map);
     var userMarker = null;
     var userPulse = null;
     var firstFix = true;
@@ -146,6 +173,20 @@ function buildHtml(center: LatLng, color: string): string {
       var icon = L.divIcon({ className: '', html: '<div class="start-dot"></div>',
                              iconSize: [14,14], iconAnchor: [7,7] });
       startMarker = L.marker(latlng, { icon: icon, interactive: false }).addTo(map);
+    }
+
+    function refreshClaimShapes() {
+      if (path.length < 2) {
+        closeLine.setLatLngs([]);
+        areaPoly.setLatLngs([]);
+        return;
+      }
+      var start = path[0];
+      var end = path[path.length - 1];
+      // Dashed straight line: start → current
+      closeLine.setLatLngs([start, end]);
+      // Polygon: real path + reverse straight close
+      areaPoly.setLatLngs([path.concat([start])]);
     }
 
     function appendPath(arr) {
@@ -160,6 +201,12 @@ function buildHtml(center: LatLng, color: string): string {
       }
       if (path.length > 0 && !startMarker) ensureStart(path[0]);
       poly.setLatLngs(path);
+      refreshClaimShapes();
+    }
+
+    function setColor(c) {
+      poly.setStyle({ color: c });
+      areaPoly.setStyle({ color: c, fillColor: c });
     }
 
     function setUser(lat, lng) {
@@ -176,6 +223,13 @@ function buildHtml(center: LatLng, color: string): string {
         userMarker.setLatLng(ll);
         userPulse.setLatLng(ll);
       }
+      // Update closing-line / area when only the live position moved
+      // (path may not yet include this point if the tracker rejected it).
+      if (path.length > 0) {
+        var start = path[0];
+        closeLine.setLatLngs([start, ll]);
+        areaPoly.setLatLngs([path.concat([ll, start])]);
+      }
       // First fix → snap. Subsequent → pan smoothly.
       if (firstFix) {
         map.setView(ll, 17, { animate: false });
@@ -185,7 +239,7 @@ function buildHtml(center: LatLng, color: string): string {
       }
     }
 
-    window.runfit = { appendPath: appendPath, setUser: setUser };
+    window.runfit = { appendPath: appendPath, setUser: setUser, setColor: setColor };
   </script>
 </body>
 </html>`;

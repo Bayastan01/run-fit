@@ -16,11 +16,24 @@ import { startBackgroundLocation, stopBackgroundLocation } from "@/features/trac
 import { pointBuffer } from "@/features/tracking/pointBuffer";
 import { useUserLocation } from "@/features/location/useUserLocation";
 import { RunMap } from "@/components/RunMap";
+import { CaptureFlash } from "@/components/CaptureFlash";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 export default function ActiveRun() {
@@ -39,6 +52,28 @@ export default function ActiveRun() {
   // Independent foreground GPS just for the map dot — gives a position
   // even before the tracker accepts the first valid sample.
   const { coord: liveCoord } = useUserLocation();
+
+  // Live capture detector: when the runner closes a loop back to the
+  // start (within 25 m, after at least 200 m of distance), we celebrate
+  // and color the polygon green. Resets after the celebration.
+  const [captureFlash, setCaptureFlash] = useState(false);
+  const [areaClosed, setAreaClosed] = useState(false);
+  useEffect(() => {
+    const last = state.points[state.points.length - 1];
+    const start = state.points[0];
+    if (!last || !start) return;
+    if (state.scoredDistanceM < 200) return;
+    const d = haversineMeters(last.lat, last.lng, start.lat, start.lng);
+    if (d < 25 && !areaClosed) {
+      setAreaClosed(true);
+      setCaptureFlash(true);
+      setTimeout(() => setCaptureFlash(false), 2000);
+    } else if (d > 60 && areaClosed) {
+      setAreaClosed(false);
+    }
+  }, [state.points.length, state.scoredDistanceM]);
+
+  const claimColor = areaClosed ? "#00ff88" : state.activity.color;
 
   // Background GPS — фоновое отслеживание + foreground service notification
   useEffect(() => {
@@ -154,6 +189,7 @@ export default function ActiveRun() {
             return null;
           })()}
           color={state.activity.color}
+          claimColor={claimColor}
         />
         {/* Subtle dim so metric cards stay legible over the map */}
         <View
@@ -233,7 +269,23 @@ export default function ActiveRun() {
             <Text className="text-subtle text-xs">90 сек без движения — продолжаем когда побежишь</Text>
           </View>
         )}
+
+        {/* Live capture banner — area closed back to start */}
+        {areaClosed && !captureFlash && (
+          <View
+            className="mt-3 rounded-2xl px-4 py-3"
+            style={{ backgroundColor: "rgba(0,255,136,0.18)", borderWidth: 1, borderColor: "rgba(0,255,136,0.5)" }}
+          >
+            <Text style={{ color: "#00ff88", fontWeight: "700", fontSize: 14 }}>🟢 Замкнул петлю — территория зачтена</Text>
+            <Text className="text-subtle text-xs">Финишируй, чтобы закрепить улицы внутри.</Text>
+          </View>
+        )}
       </View>
+
+      {/* Fullscreen capture flash on first close */}
+      {captureFlash && (
+        <CaptureFlash count={1} onDone={() => setCaptureFlash(false)} />
+      )}
 
       {/* Hint */}
       <View className="absolute left-0 right-0 items-center" style={{ bottom: 200 }}>
