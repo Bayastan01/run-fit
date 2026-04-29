@@ -84,13 +84,6 @@
         {}
       ],
       [
-        "@sentry/react-native/expo",
-        {
-          "organization": "run-fit",
-          "project": "run-fit-mobile"
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "android": {
