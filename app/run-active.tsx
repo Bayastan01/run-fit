@@ -14,6 +14,7 @@ import { useRunTracker } from "@/features/tracking/useRunTracker";
 import { useChain, CHAIN_DEFAULTS } from "@/features/tracking/useChain";
 import { startBackgroundLocation, stopBackgroundLocation } from "@/features/tracking/backgroundTask";
 import { pointBuffer } from "@/features/tracking/pointBuffer";
+import { useUserLocation } from "@/features/location/useUserLocation";
 import { RunMap } from "@/components/RunMap";
 
 function formatTime(seconds: number): string {
@@ -35,6 +36,9 @@ export default function ActiveRun() {
 
   const [state, controls] = useRunTracker(runId !== null && startedAt !== null);
   const chain = useChain(state.activity.scoring);
+  // Independent foreground GPS just for the map dot — gives a position
+  // even before the tracker accepts the first valid sample.
+  const { coord: liveCoord } = useUserLocation();
 
   // Background GPS — фоновое отслеживание + foreground service notification
   useEffect(() => {
@@ -143,9 +147,12 @@ export default function ActiveRun() {
       <View className="absolute inset-0">
         <RunMap
           points={state.points.map((p) => ({ lat: p.lat, lng: p.lng }))}
-          current={state.points.length > 0
-            ? { lat: state.points[state.points.length - 1].lat, lng: state.points[state.points.length - 1].lng }
-            : null}
+          current={(() => {
+            const last = state.points[state.points.length - 1];
+            if (last) return { lat: last.lat, lng: last.lng };
+            if (liveCoord) return { lat: liveCoord.lat, lng: liveCoord.lng };
+            return null;
+          })()}
           color={state.activity.color}
         />
         {/* Subtle dim so metric cards stay legible over the map */}

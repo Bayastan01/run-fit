@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { WebView } from "react-native-webview";
 
@@ -7,7 +7,8 @@ interface LatLng { lat: number; lng: number }
 interface Props {
   /** Stream of points already collected by the tracker. */
   points: LatLng[];
-  /** Latest live position (used for the pulse marker). */
+  /** Latest live position — passed in from the screen even before the
+   *  tracker has accumulated points (e.g. on first GPS lock). */
   current?: LatLng | null;
   /** Activity color — line and marker tint. */
   color?: string;
@@ -16,28 +17,57 @@ interface Props {
 /**
  * Lightweight map for the active-run screen: starting point, route
  * polyline, current pulsing marker. Live updates via injectJavaScript.
+ *
+ * We queue every JS command until WebView fires onLoadEnd, then flush.
+ * Otherwise the very first setUser/appendPath gets dropped on cold start.
  */
 export function RunMap({ points, current, color = "#00ff88" }: Props) {
   const ref = useRef<WebView | null>(null);
-  const start = points[0] ?? current ?? null;
+  const [ready, setReady] = useState(false);
+  const queue = useRef<string[]>([]);
+  const lastSentLen = useRef(0);
 
-  // Build initial HTML once — runtime updates go through injectJavaScript.
-  const html = useMemo(() => buildHtml(start, color), [start?.lat, start?.lng, color]);
+  const send = useCallback((js: string): void => {
+    if (ready && ref.current) {
+      ref.current.injectJavaScript(js + " true;");
+    } else {
+      queue.current.push(js);
+    }
+  }, [ready]);
 
-  // Push every new tail point to map (incremental, avoids full re-render).
+  // Initial HTML built once. Center is just a placeholder — first setUser()
+  // does setView() with the real position.
+  const html = useMemo(
+    () => buildHtml({ lat: 55.7558, lng: 37.6173 }, color),
+    [color],
+  );
+
+  // Flush queued JS once the page is loaded.
+  function onLoadEnd(): void {
+    setReady(true);
+    if (ref.current) {
+      const drained = queue.current.splice(0, queue.current.length);
+      if (drained.length > 0) {
+        ref.current.injectJavaScript(drained.join("\n") + " true;");
+      }
+    }
+  }
+
+  // Push every new tail point to map.
   useEffect(() => {
-    if (!ref.current || points.length === 0) return;
-    const recent = points.slice(-30);
-    const arr = JSON.stringify(recent.map((p) => [p.lat, p.lng]));
-    ref.current.injectJavaScript(`window.runfit && window.runfit.appendPath(${arr}); true;`);
-  }, [points.length]);
+    if (points.length === 0) return;
+    if (points.length === lastSentLen.current) return;
+    const tail = points.slice(lastSentLen.current);
+    lastSentLen.current = points.length;
+    const arr = JSON.stringify(tail.map((p) => [p.lat, p.lng]));
+    send(`window.runfit && window.runfit.appendPath(${arr});`);
+  }, [points.length, send]);
 
+  // Push live user position.
   useEffect(() => {
-    if (!ref.current || !current) return;
-    ref.current.injectJavaScript(
-      `window.runfit && window.runfit.setUser(${current.lat}, ${current.lng}); true;`,
-    );
-  }, [current?.lat, current?.lng]);
+    if (!current) return;
+    send(`window.runfit && window.runfit.setUser(${current.lat}, ${current.lng});`);
+  }, [current?.lat, current?.lng, send]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
@@ -50,15 +80,14 @@ export function RunMap({ points, current, color = "#00ff88" }: Props) {
         scrollEnabled={false}
         style={{ flex: 1, backgroundColor: "#0a0a0a" }}
         androidLayerType="hardware"
+        onLoadEnd={onLoadEnd}
       />
     </View>
   );
 }
 
-function buildHtml(start: LatLng | null, color: string): string {
-  const center = start ?? { lat: 55.7558, lng: 37.6173 };
+function buildHtml(center: LatLng, color: string): string {
   const initial = JSON.stringify([center.lat, center.lng]);
-
   return /* html */ `
 <!DOCTYPE html>
 <html>
@@ -110,6 +139,7 @@ function buildHtml(start: LatLng | null, color: string): string {
     var poly = L.polyline([], { color: COLOR, weight: 5, lineCap: 'round', lineJoin: 'round' }).addTo(map);
     var userMarker = null;
     var userPulse = null;
+    var firstFix = true;
 
     function ensureStart(latlng) {
       if (startMarker) return;
@@ -120,7 +150,6 @@ function buildHtml(start: LatLng | null, color: string): string {
 
     function appendPath(arr) {
       if (!arr || arr.length === 0) return;
-      // Avoid pushing dup of last
       var last = path[path.length - 1];
       for (var i = 0; i < arr.length; i++) {
         var p = arr[i];
@@ -147,7 +176,13 @@ function buildHtml(start: LatLng | null, color: string): string {
         userMarker.setLatLng(ll);
         userPulse.setLatLng(ll);
       }
-      map.panTo(ll, { animate: true, duration: 0.6 });
+      // First fix → snap. Subsequent → pan smoothly.
+      if (firstFix) {
+        map.setView(ll, 17, { animate: false });
+        firstFix = false;
+      } else {
+        map.panTo(ll, { animate: true, duration: 0.6 });
+      }
     }
 
     window.runfit = { appendPath: appendPath, setUser: setUser };
