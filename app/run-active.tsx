@@ -14,6 +14,7 @@ import { useRunTracker } from "@/features/tracking/useRunTracker";
 import { useChain, CHAIN_DEFAULTS } from "@/features/tracking/useChain";
 import { startBackgroundLocation, stopBackgroundLocation } from "@/features/tracking/backgroundTask";
 import { pointBuffer } from "@/features/tracking/pointBuffer";
+import { RunMap } from "@/components/RunMap";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -138,24 +139,23 @@ export default function ActiveRun() {
 
   return (
     <View className="flex-1 bg-bg">
-      {/* Background grid + glow */}
-      <View className="absolute inset-0" style={{ backgroundColor: "#0a0a0a" }}>
-        {Array.from({ length: 20 }).map((_, i) => (
-          <View key={`h-${i}`} style={{ position: "absolute", left: 0, right: 0, top: i * 40, height: 1, backgroundColor: "rgba(50,50,50,0.15)" }} />
-        ))}
-        {Array.from({ length: 12 }).map((_, i) => (
-          <View key={`v-${i}`} style={{ position: "absolute", top: 0, bottom: 0, left: i * 40, width: 1, backgroundColor: "rgba(50,50,50,0.15)" }} />
-        ))}
-        <Animated.View
-          style={{
-            position: "absolute",
-            left: "50%", top: "45%",
-            width: 240, height: 240, marginLeft: -120, marginTop: -120,
-            borderRadius: 120,
-            backgroundColor: `${state.activity.color}33`,
-            opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.8] }),
-            transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] }) }],
-          }}
+      {/* Live route map (start point + path + current pulse) */}
+      <View className="absolute inset-0">
+        <RunMap
+          points={state.points.map((p) => ({ lat: p.lat, lng: p.lng }))}
+          current={state.points.length > 0
+            ? { lat: state.points[state.points.length - 1].lat, lng: state.points[state.points.length - 1].lng }
+            : null}
+          color={state.activity.color}
+        />
+        {/* Subtle dim so metric cards stay legible over the map */}
+        <View
+          pointerEvents="none"
+          style={{ position: "absolute", left: 0, right: 0, top: 0, height: 360, backgroundColor: "rgba(10,10,10,0.55)" }}
+        />
+        <View
+          pointerEvents="none"
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 220, backgroundColor: "rgba(10,10,10,0.55)" }}
         />
       </View>
 
