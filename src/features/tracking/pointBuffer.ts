@@ -1,10 +1,14 @@
-import { MMKV } from "react-native-mmkv";
+/**
+ * Offline GPS-point buffer with retry.
+ *
+ * Tries `react-native-mmkv` first (sync, fast).
+ * Falls back to `@react-native-async-storage/async-storage` when MMKV
+ * is unavailable (Expo Go without new architecture).
+ */
 import { uploadPoints, type RunPointInput } from "@/api/runs";
 
-const storage = new MMKV({ id: "run-fit-points" });
-
-const KEY_RUN_ID = "currentRunId";
-const KEY_POINTS = "pendingPoints";
+const KEY_RUN_ID = "runfit_currentRunId";
+const KEY_POINTS = "runfit_pendingPoints";
 
 interface BufferedPoint {
   ts: number;
@@ -15,37 +19,79 @@ interface BufferedPoint {
   altitude: number | null;
 }
 
+interface KV {
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  delete(key: string): void;
+}
+
+let kv: KV | null = null;
+
+function getKV(): KV {
+  if (kv) return kv;
+  try {
+    // Lazy require so MMKV's TurboModule check doesn't run on app boot in Expo Go.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { MMKV } = require("react-native-mmkv") as typeof import("react-native-mmkv");
+    const mm = new MMKV({ id: "run-fit-points" });
+    kv = {
+      get: (k) => mm.getString(k) ?? null,
+      set: (k, v) => mm.set(k, v),
+      delete: (k) => mm.delete(k),
+    };
+    return kv;
+  } catch {
+    // Fallback: sync wrapper around AsyncStorage with in-memory cache.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const AsyncStorage = require("@react-native-async-storage/async-storage").default as {
+      getItem(key: string): Promise<string | null>;
+      setItem(key: string, value: string): Promise<void>;
+      removeItem(key: string): Promise<void>;
+    };
+    const cache = new Map<string, string>();
+    AsyncStorage.getItem(KEY_RUN_ID).then((v) => { if (v) cache.set(KEY_RUN_ID, v); }).catch(() => {});
+    AsyncStorage.getItem(KEY_POINTS).then((v) => { if (v) cache.set(KEY_POINTS, v); }).catch(() => {});
+    kv = {
+      get: (k) => cache.get(k) ?? null,
+      set: (k, v) => { cache.set(k, v); void AsyncStorage.setItem(k, v); },
+      delete: (k) => { cache.delete(k); void AsyncStorage.removeItem(k); },
+    };
+    return kv;
+  }
+}
+
 class PointBuffer {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private flushing = false;
 
   attachRun(runId: string): void {
-    storage.set(KEY_RUN_ID, runId);
-    storage.delete(KEY_POINTS);
+    const s = getKV();
+    s.set(KEY_RUN_ID, runId);
+    s.delete(KEY_POINTS);
     this.startFlushTimer();
   }
 
   detachRun(): void {
     this.stopFlushTimer();
     void this.flush();
-    storage.delete(KEY_RUN_ID);
+    getKV().delete(KEY_RUN_ID);
   }
 
   push(p: BufferedPoint): void {
     const arr = this.read();
     arr.push(p);
-    storage.set(KEY_POINTS, JSON.stringify(arr));
+    getKV().set(KEY_POINTS, JSON.stringify(arr));
   }
 
   pushMany(points: BufferedPoint[]): void {
     if (points.length === 0) return;
     const arr = this.read();
     arr.push(...points);
-    storage.set(KEY_POINTS, JSON.stringify(arr));
+    getKV().set(KEY_POINTS, JSON.stringify(arr));
   }
 
   private read(): BufferedPoint[] {
-    const raw = storage.getString(KEY_POINTS);
+    const raw = getKV().get(KEY_POINTS);
     if (!raw) return [];
     try { return JSON.parse(raw) as BufferedPoint[]; } catch { return []; }
   }
@@ -66,7 +112,8 @@ class PointBuffer {
 
   async flush(): Promise<void> {
     if (this.flushing) return;
-    const runId = storage.getString(KEY_RUN_ID);
+    const s = getKV();
+    const runId = s.get(KEY_RUN_ID);
     if (!runId) return;
     const all = this.read();
     if (all.length === 0) return;
@@ -82,7 +129,7 @@ class PointBuffer {
         altitude: p.altitude ?? undefined,
       }));
       await uploadPoints(runId, payload);
-      storage.delete(KEY_POINTS);
+      s.delete(KEY_POINTS);
     } catch {
       // keep buffer for retry
     } finally {

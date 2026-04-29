@@ -2,7 +2,6 @@ import { useState } from "react";
 import { View, Text } from "react-native";
 import { router } from "expo-router";
 import * as Location from "expo-location";
-import * as Notifications from "expo-notifications";
 import { Button } from "@/components/Button";
 
 export default function Permissions() {
@@ -15,7 +14,12 @@ export default function Permissions() {
       if (fg.status === "granted") {
         await Location.requestBackgroundPermissionsAsync().catch(() => null);
       }
-      await Notifications.requestPermissionsAsync().catch(() => null);
+      // expo-notifications недоступен в Expo Go (SDK 53+);
+      // используем dynamic import чтобы не падать при загрузке модуля.
+      try {
+        const N = await import("expo-notifications");
+        await N.requestPermissionsAsync().catch(() => null);
+      } catch {}
     } finally {
       setBusy(false);
       router.push("/(onboarding)/faction");
