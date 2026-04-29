@@ -72,8 +72,20 @@ export function RunMap({ points, current, color = "#00ff88", claimColor }: Props
   // Push every new tail point to map.
   useEffect(() => {
     if (!ready) return; // onLoadEnd will replay everything.
+    // If parent reset its tracker (e.g. user pressed stop), drop current
+    // start dot/path/polygon — otherwise stale marker stays from prev run.
+    if (points.length === 0 && lastSentLen.current > 0) {
+      send(`window.runfit && window.runfit.clearAll();`);
+      lastSentLen.current = 0;
+      return;
+    }
     if (points.length === 0) return;
     if (points.length === lastSentLen.current) return;
+    // Detect tracker reset (length dropped) — reset map and resync.
+    if (points.length < lastSentLen.current) {
+      send(`window.runfit && window.runfit.clearAll();`);
+      lastSentLen.current = 0;
+    }
     const tail = points.slice(lastSentLen.current);
     lastSentLen.current = points.length;
     const arr = JSON.stringify(tail.map((p) => [p.lat, p.lng]));
@@ -257,7 +269,16 @@ function buildHtml(center: LatLng, color: string): string {
       }
     }
 
-    window.runfit = { appendPath: appendPath, setUser: setUser, setColor: setColor };
+    function clearAll() {
+      path = [];
+      poly.setLatLngs([]);
+      areaPoly.setLatLngs([]);
+      closeLine.setLatLngs([]);
+      if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
+      firstFix = true;
+    }
+
+    window.runfit = { appendPath: appendPath, setUser: setUser, setColor: setColor, clearAll: clearAll };
   </script>
 </body>
 </html>`;

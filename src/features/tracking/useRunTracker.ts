@@ -68,8 +68,12 @@ interface Options {
 
 export function useRunTracker(active: boolean, options: Options = {}): [RunTrackerState, RunTrackerControls] {
   const {
-    maxAccuracyM = 50,
-    maxSpeedMps = 25,
+    // Tighter accuracy gate (was 50): drops the worst noise that makes
+    // the dot jump to a parallel street.
+    maxAccuracyM = 25,
+    // Cap at 12 m/s ≈ 43 km/h — covers fastest sprinters & cycling but
+    // rejects clear teleports. (Was 25.)
+    maxSpeedMps = 12,
     autoPauseAfterMs = 90_000,
     ewmaAlpha = 0.4,
     hysteresisStickyMs = 2500,
@@ -175,6 +179,9 @@ export function useRunTracker(active: boolean, options: Options = {}): [RunTrack
         segM = haversineMeters(prev.lat, prev.lng, latitude, longitude);
         const dtS = Math.max(0.1, (ts - prev.ts) / 1000);
         if (segM / dtS > maxSpeedMps) return; // teleport reject
+        // Drop tiny GPS noise: <2 m or <0.4 s since last sample.
+        // Without this each sub-step jitters the polyline back & forth.
+        if (segM < 2 || dtS < 0.4) return;
       }
 
       const smooth = ewmaRef.current.push(rawSpeed);
