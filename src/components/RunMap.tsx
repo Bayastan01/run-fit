@@ -18,6 +18,16 @@ interface Props {
    * Default = `color`.
    */
   claimColor?: string;
+  /**
+   * Streets captured during this run/right now. Drawn as fat coloured
+   * outline on top of the route. Used in run-history detail screen.
+   */
+  capturedStreets?: {
+    id: string;
+    factionColor?: string | null;
+    /** GeoJSON LineString coordinates: [lng, lat][]. */
+    coordinates: [number, number][];
+  }[];
 }
 
 /**
@@ -27,7 +37,7 @@ interface Props {
  * We queue every JS command until WebView fires onLoadEnd, then flush.
  * Otherwise the very first setUser/appendPath gets dropped on cold start.
  */
-export function RunMap({ points, current, color = "#00ff88", claimColor }: Props) {
+export function RunMap({ points, current, color = "#00ff88", claimColor, capturedStreets }: Props) {
   const ref = useRef<WebView | null>(null);
   const [ready, setReady] = useState(false);
   const queue = useRef<string[]>([]);
@@ -104,6 +114,16 @@ export function RunMap({ points, current, color = "#00ff88", claimColor }: Props
     send(`window.runfit && window.runfit.setColor(${JSON.stringify(c)});`);
   }, [color, claimColor, send]);
 
+  // Push captured-street overlay (run-history detail).
+  useEffect(() => {
+    if (!capturedStreets) return;
+    const payload = capturedStreets.map((s) => ({
+      coords: s.coordinates.map(([lng, lat]) => [lat, lng]),
+      color: s.factionColor ?? "#00ff88",
+    }));
+    send(`window.runfit && window.runfit.setCaptured(${JSON.stringify(payload)});`);
+  }, [capturedStreets, send]);
+
   return (
     <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
       <WebView
@@ -171,6 +191,21 @@ function buildHtml(center: LatLng, color: string): string {
 
     var startMarker = null;
     var path = [];
+    var capturedLayer = L.layerGroup().addTo(map);
+
+    function setCaptured(list) {
+      capturedLayer.clearLayers();
+      if (!list || list.length === 0) return;
+      list.forEach(function (s) {
+        L.polyline(s.coords, {
+          color: s.color || '#00ff88',
+          weight: 8,
+          opacity: 0.85,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(capturedLayer);
+      });
+    }
     // INTVL-style: claim polygon under everything, then dashed close-line,
     // then real route polyline on top.
     var areaPoly = L.polygon([], {
@@ -274,11 +309,18 @@ function buildHtml(center: LatLng, color: string): string {
       poly.setLatLngs([]);
       areaPoly.setLatLngs([]);
       closeLine.setLatLngs([]);
+      capturedLayer.clearLayers();
       if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
       firstFix = true;
     }
 
-    window.runfit = { appendPath: appendPath, setUser: setUser, setColor: setColor, clearAll: clearAll };
+    window.runfit = {
+      appendPath: appendPath,
+      setUser: setUser,
+      setColor: setColor,
+      clearAll: clearAll,
+      setCaptured: setCaptured,
+    };
   </script>
 </body>
 </html>`;

@@ -24,6 +24,12 @@ interface RunDetail {
   pointCount: number;
   capturedSegments: number;
   track: { coordinates: [number, number][] } | null;
+  captured: {
+    id: string;
+    name: string | null;
+    factionColor: string | null;
+    geometry: { type: "LineString"; coordinates: [number, number][] };
+  }[];
 }
 
 export default function RunDetailScreen() {
@@ -43,6 +49,15 @@ export default function RunDetailScreen() {
   const trackPoints = useMemo(() => {
     if (!data?.track?.coordinates) return [];
     return data.track.coordinates.map(([lng, lat]) => ({ lat, lng }));
+  }, [data]);
+
+  const capturedStreets = useMemo(() => {
+    if (!data?.captured) return [];
+    return data.captured.map((s) => ({
+      id: s.id,
+      factionColor: s.factionColor,
+      coordinates: s.geometry.coordinates,
+    }));
   }, [data]);
 
   return (
@@ -70,7 +85,7 @@ export default function RunDetailScreen() {
           {trackPoints.length > 1 && (
             <View
               style={{
-                height: 280, borderRadius: 18, overflow: "hidden",
+                height: 320, borderRadius: 18, overflow: "hidden",
                 borderWidth: 1, borderColor: "rgba(0,255,136,0.30)",
               }}
             >
@@ -78,7 +93,16 @@ export default function RunDetailScreen() {
                 points={trackPoints}
                 current={trackPoints[trackPoints.length - 1] ?? null}
                 color="#00ff88"
+                capturedStreets={capturedStreets}
               />
+            </View>
+          )}
+          {capturedStreets.length > 0 && (
+            <View className="flex-row items-center gap-2 px-1">
+              <View style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: "#00ff88" }} />
+              <Text className="text-subtle text-xs">
+                Захвачено улиц: {capturedStreets.length}
+              </Text>
             </View>
           )}
 
