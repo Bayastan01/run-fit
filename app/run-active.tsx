@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, Animated, Alert } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
