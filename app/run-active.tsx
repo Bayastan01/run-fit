@@ -287,6 +287,14 @@ export default function ActiveRun() {
           </View>
         )}
 
+        {/* Tracker debug — лучшая визуализация чем «карта молчит» */}
+        <View className="mt-2 flex-row items-center gap-2">
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: state.points.length > 0 ? "#00ff88" : "#ef4444" }} />
+          <Text className="text-subtle text-[11px]">
+            GPS: {state.points.length} точек · {state.unflushedCount} в очереди отправки · accuracy {state.points[state.points.length - 1]?.accuracyM != null ? `${Math.round(state.points[state.points.length - 1]!.accuracyM!)}м` : "—"}
+          </Text>
+        </View>
+
         {/* Live capture banner — area closed back to start */}
         {areaClosed && !captureFlash && (
           <View

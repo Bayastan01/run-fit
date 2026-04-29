@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams, Stack } from "expo-router";
 import { ChevronLeft, MapPin, Clock, Zap, Target, AlertTriangle } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
+import { RunMap } from "@/components/RunMap";
 import { api, unwrap } from "@/api/client";
 
 interface RunDetail {
@@ -38,6 +39,12 @@ export default function RunDetailScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Track is GeoJSON LineString → coordinates are [lng, lat]; flip for RunMap.
+  const trackPoints = useMemo(() => {
+    if (!data?.track?.coordinates) return [];
+    return data.track.coordinates.map(([lng, lat]) => ({ lat, lng }));
+  }, [data]);
+
   return (
     <View className="flex-1 bg-bg">
       <Stack.Screen options={{ headerShown: false }} />
@@ -60,6 +67,21 @@ export default function RunDetailScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, gap: 12 }}>
+          {trackPoints.length > 1 && (
+            <View
+              style={{
+                height: 280, borderRadius: 18, overflow: "hidden",
+                borderWidth: 1, borderColor: "rgba(0,255,136,0.30)",
+              }}
+            >
+              <RunMap
+                points={trackPoints}
+                current={trackPoints[trackPoints.length - 1] ?? null}
+                color="#00ff88"
+              />
+            </View>
+          )}
+
           <GlassCard padding={20}>
             <Text className="text-subtle text-xs uppercase tracking-widest mb-2">
               {new Date(data.run.startedAt).toLocaleString("ru-RU")}
