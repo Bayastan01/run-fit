@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { ChevronLeft, ShieldOff, MapPin, Trash2, Plus } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
 import { Button } from "@/components/Button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { usePrivacy } from "@/stores/privacy";
 import { useUserLocation } from "@/features/location/useUserLocation";
 
@@ -29,6 +30,17 @@ export default function Settings() {
           </Pressable>
           <Text className="text-white text-2xl font-bold">Настройки</Text>
         </View>
+
+        {/* Theme */}
+        <GlassCard padding={16}>
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1 pr-3">
+              <Text className="text-white font-semibold">Тема карты</Text>
+              <Text className="text-subtle text-xs">Дневная — яркие тайлы; Ночная — тёмные</Text>
+            </View>
+            <ThemeToggle compact={false} />
+          </View>
+        </GlassCard>
 
         {/* Ghost mode */}
         <GlassCard padding={16}>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { WebView } from "react-native-webview";
+import { useTheme, tileUrlForTheme, mapBackgroundForTheme, type ThemeMode } from "@/stores/theme";
 
 interface LatLng { lat: number; lng: number }
 
@@ -42,6 +43,7 @@ export function RunMap({ points, current, color = "#00ff88", claimColor, capture
   const [ready, setReady] = useState(false);
   const queue = useRef<string[]>([]);
   const lastSentLen = useRef(0);
+  const themeMode = useTheme((s) => s.mode);
 
   const send = useCallback((js: string): void => {
     if (ready && ref.current) {
@@ -51,11 +53,12 @@ export function RunMap({ points, current, color = "#00ff88", claimColor, capture
     }
   }, [ready]);
 
-  // Initial HTML built once. Center is just a placeholder — first setUser()
-  // does setView() with the real position.
+  // Initial HTML built once per (color, theme). Center is a placeholder —
+  // first setUser() snaps to the real position. Theme switch rebuilds
+  // the WebView so the tile layer is replaced cleanly.
   const html = useMemo(
-    () => buildHtml({ lat: 55.7558, lng: 37.6173 }, color),
-    [color],
+    () => buildHtml({ lat: 55.7558, lng: 37.6173 }, color, themeMode),
+    [color, themeMode],
   );
 
   // Flush queued JS once the page is loaded.
@@ -124,8 +127,9 @@ export function RunMap({ points, current, color = "#00ff88", claimColor, capture
     send(`window.runfit && window.runfit.setCaptured(${JSON.stringify(payload)});`);
   }, [capturedStreets, send]);
 
+  const bg = mapBackgroundForTheme(themeMode);
   return (
-    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
+    <View style={{ flex: 1, backgroundColor: bg }}>
       <WebView
         ref={ref}
         originWhitelist={["*"]}
@@ -133,7 +137,7 @@ export function RunMap({ points, current, color = "#00ff88", claimColor, capture
         javaScriptEnabled
         domStorageEnabled
         scrollEnabled={false}
-        style={{ flex: 1, backgroundColor: "#0a0a0a" }}
+        style={{ flex: 1, backgroundColor: bg }}
         androidLayerType="hardware"
         onLoadEnd={onLoadEnd}
       />
@@ -141,8 +145,13 @@ export function RunMap({ points, current, color = "#00ff88", claimColor, capture
   );
 }
 
-function buildHtml(center: LatLng, color: string): string {
+function buildHtml(center: LatLng, color: string, theme: ThemeMode): string {
   const initial = JSON.stringify([center.lat, center.lng]);
+  const tileUrl = tileUrlForTheme(theme);
+  const bg = mapBackgroundForTheme(theme);
+  const attrBg   = theme === "light" ? "rgba(255,255,255,0.7)" : "rgba(10,10,10,0.6)";
+  const attrText = theme === "light" ? "#444"  : "#888";
+  const attrLink = theme === "light" ? "#222"  : "#aaa";
   return /* html */ `
 <!DOCTYPE html>
 <html>
@@ -151,10 +160,10 @@ function buildHtml(center: LatLng, color: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html, body, #map { margin:0; padding:0; height:100%; width:100%; background:#0a0a0a; }
-    .leaflet-container { background:#0a0a0a; }
-    .leaflet-control-attribution { font-size:9px; background:rgba(10,10,10,0.6); color:#888; }
-    .leaflet-control-attribution a { color:#aaa; }
+    html, body, #map { margin:0; padding:0; height:100%; width:100%; background:${bg}; }
+    .leaflet-container { background:${bg}; }
+    .leaflet-control-attribution { font-size:9px; background:${attrBg}; color:${attrText}; }
+    .leaflet-control-attribution a { color:${attrLink}; }
     .leaflet-control-zoom { display:none; }
     .start-dot {
       width: 14px; height: 14px; border-radius: 50%;
@@ -185,7 +194,7 @@ function buildHtml(center: LatLng, color: string): string {
     var COLOR = ${JSON.stringify(color)};
     var map = L.map('map', { zoomControl: false, attributionControl: true, dragging: true, tap: true })
                 .setView(${initial}, 17);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('${tileUrl}', {
       maxZoom: 20, attribution: '© OSM · CARTO', subdomains: 'abcd',
     }).addTo(map);
 

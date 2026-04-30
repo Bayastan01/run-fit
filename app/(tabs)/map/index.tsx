@@ -8,6 +8,7 @@ import {
 import { GlassCard } from "@/components/GlassCard";
 import { IconButton } from "@/components/Button";
 import { TerritoryMap, type LatLng } from "@/components/TerritoryMap";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUserLocation } from "@/features/location/useUserLocation";
 import { startRun } from "@/api/runs";
 import { fetchStreets, type StreetSegmentFeature, type BBox } from "@/api/streets";
@@ -130,8 +131,9 @@ export default function MapTab() {
             </GlassCard>
           </Pressable>
 
-          <View className="flex-row gap-2">
+          <View className="flex-row gap-2 items-center">
             {loading && <ActivityIndicator color="#00ff88" />}
+            <ThemeToggle />
             <Pressable onPress={() => router.push("/(tabs)/profile")}>
               <IconButton size={48} icon={<Text style={{ fontSize: 22 }}>⚡</Text>} />
             </Pressable>

@@ -5,6 +5,7 @@ import { WebView } from "react-native-webview";
 import { ChevronLeft, Flame } from "lucide-react-native";
 import { useUserLocation } from "@/features/location/useUserLocation";
 import { fetchHeatmap, type HeatCell } from "@/api/heatmap";
+import { useTheme, tileUrlForTheme, mapBackgroundForTheme, type ThemeMode } from "@/stores/theme";
 
 export default function HeatmapScreen() {
   const { coord } = useUserLocation();
@@ -12,8 +13,12 @@ export default function HeatmapScreen() {
   const ref = useRef<WebView | null>(null);
   const [cells, setCells] = useState<HeatCell[]>([]);
   const [loading, setLoading] = useState(true);
+  const themeMode = useTheme((s) => s.mode);
 
-  const html = useMemo(() => buildHtml(center), [center.lat, center.lng]);
+  const html = useMemo(
+    () => buildHtml(center, themeMode),
+    [center.lat, center.lng, themeMode],
+  );
 
   const loadAround = useCallback(async (lat: number, lng: number) => {
     setLoading(true);
@@ -81,8 +86,13 @@ export default function HeatmapScreen() {
   );
 }
 
-function buildHtml(center: { lat: number; lng: number }): string {
+function buildHtml(center: { lat: number; lng: number }, theme: ThemeMode): string {
   const initial = JSON.stringify([center.lat, center.lng]);
+  const tileUrl = tileUrlForTheme(theme);
+  const bg = mapBackgroundForTheme(theme);
+  const attrBg   = theme === "light" ? "rgba(255,255,255,0.7)" : "rgba(10,10,10,0.6)";
+  const attrText = theme === "light" ? "#444"  : "#888";
+  const attrLink = theme === "light" ? "#222"  : "#aaa";
   return /* html */ `
 <!DOCTYPE html>
 <html><head>
@@ -90,10 +100,10 @@ function buildHtml(center: { lat: number; lng: number }): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  html, body, #map { margin:0; padding:0; height:100%; width:100%; background:#0a0a0a; }
-  .leaflet-container { background:#0a0a0a; }
-  .leaflet-control-attribution { font-size:9px; background:rgba(10,10,10,0.6); color:#888; }
-  .leaflet-control-attribution a { color:#aaa; }
+  html, body, #map { margin:0; padding:0; height:100%; width:100%; background:${bg}; }
+  .leaflet-container { background:${bg}; }
+  .leaflet-control-attribution { font-size:9px; background:${attrBg}; color:${attrText}; }
+  .leaflet-control-attribution a { color:${attrLink}; }
   .leaflet-control-zoom { display:none; }
 </style>
 </head><body>
@@ -101,7 +111,7 @@ function buildHtml(center: { lat: number; lng: number }): string {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 var map = L.map('map', { zoomControl:false, dragging:true, tap:true }).setView(${initial}, 13);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+L.tileLayer('${tileUrl}', {
   maxZoom:20, attribution:'© OSM · CARTO', subdomains:'abcd',
 }).addTo(map);
 

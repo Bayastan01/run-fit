@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { StreetSegmentFeature } from "@/api/streets";
+import { useTheme, tileUrlForTheme, mapBackgroundForTheme, type ThemeMode } from "@/stores/theme";
 
 export interface LatLng {
   latitude: number;
@@ -23,13 +24,15 @@ export function TerritoryMap({
   segments, path, center, userLocation, historyTracks, onSelect, onBoundsChanged,
 }: TerritoryMapProps) {
   const webRef = useRef<WebView | null>(null);
+  const themeMode = useTheme((s) => s.mode);
 
-  // HTML rebuild only when the *initial* center changes by >0.001° (~110m).
-  // Re-rendering the WebView every tiny GPS update would reset the layers.
+  // HTML rebuild only when the *initial* center changes by >0.001° (~110m)
+  // OR theme switches. Re-rendering the WebView on every GPS tick would
+  // reset all layers; a theme toggle is rare enough to warrant a rebuild.
   const html = useMemo(
-    () => buildHtml(center),
+    () => buildHtml(center, themeMode),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [Math.round(center.latitude * 1000) / 1000, Math.round(center.longitude * 1000) / 1000],
+    [Math.round(center.latitude * 1000) / 1000, Math.round(center.longitude * 1000) / 1000, themeMode],
   );
 
   function onMessage(e: WebViewMessageEvent) {
@@ -81,8 +84,9 @@ export function TerritoryMap({
     );
   }, [historyTracks]);
 
+  const bg = mapBackgroundForTheme(themeMode);
   return (
-    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
+    <View style={{ flex: 1, backgroundColor: bg }}>
       <WebView
         ref={webRef}
         originWhitelist={["*"]}
@@ -92,15 +96,21 @@ export function TerritoryMap({
         domStorageEnabled
         scalesPageToFit
         scrollEnabled={false}
-        style={{ flex: 1, backgroundColor: "#0a0a0a" }}
+        style={{ flex: 1, backgroundColor: bg }}
         androidLayerType="hardware"
       />
     </View>
   );
 }
 
-function buildHtml(center: LatLng): string {
+function buildHtml(center: LatLng, theme: ThemeMode): string {
   const initial = JSON.stringify([center.latitude, center.longitude]);
+  const tileUrl = tileUrlForTheme(theme);
+  const bg = mapBackgroundForTheme(theme);
+  // attribution colour adapts so it stays readable on both themes
+  const attrBg   = theme === "light" ? "rgba(255,255,255,0.7)" : "rgba(10,10,10,0.6)";
+  const attrText = theme === "light" ? "#444"  : "#888";
+  const attrLink = theme === "light" ? "#222"  : "#aaa";
 
   return /* html */ `<!DOCTYPE html>
 <html><head>
@@ -108,10 +118,10 @@ function buildHtml(center: LatLng): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  html, body, #map { margin:0; padding:0; height:100%; width:100%; background:#0a0a0a; }
-  .leaflet-container { background:#0a0a0a; }
-  .leaflet-control-attribution { font-size:9px; background:rgba(10,10,10,0.6); color:#888; }
-  .leaflet-control-attribution a { color:#aaa; }
+  html, body, #map { margin:0; padding:0; height:100%; width:100%; background:${bg}; }
+  .leaflet-container { background:${bg}; }
+  .leaflet-control-attribution { font-size:9px; background:${attrBg}; color:${attrText}; }
+  .leaflet-control-attribution a { color:${attrLink}; }
   .leaflet-control-zoom { display:none; }
 
   .user-dot { width: 18px; height: 18px; border-radius: 50%; background: #00ff88;
@@ -132,7 +142,7 @@ function buildHtml(center: LatLng): string {
 const map = L.map('map', { zoomControl: false, attributionControl: true, dragging: true, tap: true })
   .setView(${initial}, 16);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+L.tileLayer('${tileUrl}', {
   maxZoom: 20, attribution: '© OSM · CARTO', subdomains: 'abcd',
 }).addTo(map);
 

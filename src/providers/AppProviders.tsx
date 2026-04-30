@@ -12,6 +12,7 @@ import { useAuth } from "@/stores/auth";
 import { useStreak } from "@/stores/streak";
 import { useQuest } from "@/stores/quest";
 import { usePrivacy } from "@/stores/privacy";
+import { useTheme } from "@/stores/theme";
 
 initSentry();
 
@@ -33,6 +34,7 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
   const hydrateStreak  = useStreak((s) => s.hydrate);
   const hydrateQuest   = useQuest((s) => s.hydrate);
   const hydratePrivacy = usePrivacy((s) => s.hydrate);
+  const hydrateTheme   = useTheme((s) => s.hydrate);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -41,6 +43,7 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
       hydrateStreak();
       hydrateQuest();
       hydratePrivacy();
+      void hydrateTheme();
       const token = await loadToken();
       if (!mounted) return;
       if (!token) {
@@ -61,7 +64,7 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
       if (mounted) setReady(true);
     })();
     return () => { mounted = false; };
-  }, [setUser, hydrateStreak, hydrateQuest, hydratePrivacy]);
+  }, [setUser, hydrateStreak, hydrateQuest, hydratePrivacy, hydrateTheme]);
 
   if (!ready) return null;
   return <>{children}</>;
