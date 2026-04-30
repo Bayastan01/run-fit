@@ -36,8 +36,8 @@ export const useTheme = create<ThemeState>((set, get) => ({
 
 /**
  * Map tile URL to use for the WebView Leaflet maps.
- * - dark mode → CARTO dark_all (current)
- * - light mode → CARTO voyager (neutral, readable, not too bright)
+ * - dark mode → CARTO dark_all (lifted via CSS filter for readability)
+ * - light mode → CARTO voyager (neutral, readable in daylight)
  */
 export function tileUrlForTheme(mode: ThemeMode): string {
   return mode === "light"
@@ -45,7 +45,18 @@ export function tileUrlForTheme(mode: ThemeMode): string {
     : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 }
 
-/** Background colour to use behind the WebView while tiles load. */
+/** Background colour behind the WebView while tiles load. */
 export function mapBackgroundForTheme(mode: ThemeMode): string {
-  return mode === "light" ? "#f5f5f5" : "#0a0a0a";
+  return mode === "light" ? "#f5f5f5" : "#1a1d24";
+}
+
+/**
+ * CSS filter applied to .leaflet-tile in HTML so the dark theme is
+ * brighter/more readable than CARTO's near-black dark_all out of the
+ * box. Light theme passes through unchanged.
+ */
+export function tileFilterForTheme(mode: ThemeMode): string {
+  return mode === "light"
+    ? "none"
+    : "brightness(1.45) contrast(0.85) saturate(0.85)";
 }

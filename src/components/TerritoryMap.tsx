@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { StreetSegmentFeature } from "@/api/streets";
-import { useTheme, tileUrlForTheme, mapBackgroundForTheme, type ThemeMode } from "@/stores/theme";
+import { useTheme, tileUrlForTheme, mapBackgroundForTheme, tileFilterForTheme, type ThemeMode } from "@/stores/theme";
 
 export interface LatLng {
   latitude: number;
@@ -107,10 +107,10 @@ function buildHtml(center: LatLng, theme: ThemeMode): string {
   const initial = JSON.stringify([center.latitude, center.longitude]);
   const tileUrl = tileUrlForTheme(theme);
   const bg = mapBackgroundForTheme(theme);
-  // attribution colour adapts so it stays readable on both themes
-  const attrBg   = theme === "light" ? "rgba(255,255,255,0.7)" : "rgba(10,10,10,0.6)";
-  const attrText = theme === "light" ? "#444"  : "#888";
-  const attrLink = theme === "light" ? "#222"  : "#aaa";
+  const tileFilter = tileFilterForTheme(theme);
+  const attrBg   = theme === "light" ? "rgba(255,255,255,0.7)" : "rgba(26,29,36,0.7)";
+  const attrText = theme === "light" ? "#444"  : "#bbb";
+  const attrLink = theme === "light" ? "#222"  : "#ddd";
 
   return /* html */ `<!DOCTYPE html>
 <html><head>
@@ -120,6 +120,7 @@ function buildHtml(center: LatLng, theme: ThemeMode): string {
 <style>
   html, body, #map { margin:0; padding:0; height:100%; width:100%; background:${bg}; }
   .leaflet-container { background:${bg}; }
+  .leaflet-tile-pane { filter: ${tileFilter}; }
   .leaflet-control-attribution { font-size:9px; background:${attrBg}; color:${attrText}; }
   .leaflet-control-attribution a { color:${attrLink}; }
   .leaflet-control-zoom { display:none; }
