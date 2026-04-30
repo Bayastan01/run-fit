@@ -13,12 +13,14 @@ interface TerritoryMapProps {
   path: LatLng[];
   center: LatLng;
   userLocation?: LatLng | null;
+  /** Old GPS tracks to overlay as faded polylines (GeoJSON [lng,lat]). */
+  historyTracks?: { runId: string; coordinates: [number, number][] }[];
   onSelect: (segment: StreetSegmentFeature) => void;
   onBoundsChanged?: (b: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => void;
 }
 
 export function TerritoryMap({
-  segments, path, center, userLocation, onSelect, onBoundsChanged,
+  segments, path, center, userLocation, historyTracks, onSelect, onBoundsChanged,
 }: TerritoryMapProps) {
   const webRef = useRef<WebView | null>(null);
 
@@ -62,6 +64,16 @@ export function TerritoryMap({
       `if (window.runfit) { window.runfit.setUser(${userLocation.latitude}, ${userLocation.longitude}); } true;`,
     );
   }, [userLocation?.latitude, userLocation?.longitude]);
+
+  useEffect(() => {
+    if (!webRef.current) return;
+    const payload = (historyTracks ?? []).map((t) => ({
+      coords: t.coordinates.map(([lng, lat]) => [lat, lng]),
+    }));
+    webRef.current.injectJavaScript(
+      `if (window.runfit && window.runfit.setHistoryTracks) { window.runfit.setHistoryTracks(${JSON.stringify(payload)}); } true;`,
+    );
+  }, [historyTracks]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
@@ -124,8 +136,23 @@ function send(payload) {
   }
 }
 
+let historyLayer = L.layerGroup().addTo(map);
 let segLayer = L.layerGroup().addTo(map);
 let pathLine = null;
+
+function setHistoryTracks(list) {
+  historyLayer.clearLayers();
+  if (!list || list.length === 0) return;
+  list.forEach(function (t) {
+    if (!t.coords || t.coords.length < 2) return;
+    L.polyline(t.coords, {
+      color: '#00ff88',
+      weight: 3,
+      opacity: 0.30,
+      lineCap: 'round',
+    }).addTo(historyLayer);
+  });
+}
 let userMarker = null;
 let userPulse = null;
 
@@ -173,7 +200,7 @@ function emitBounds() {
 map.on('moveend', emitBounds);
 setTimeout(emitBounds, 200);
 
-window.runfit = { setSegments, setPath, setUser, follow: true };
+window.runfit = { setSegments, setPath, setUser, setHistoryTracks, follow: true };
 </script>
 </body></html>`;
 }

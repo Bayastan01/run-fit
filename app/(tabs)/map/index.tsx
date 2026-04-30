@@ -11,6 +11,7 @@ import { TerritoryMap, type LatLng } from "@/components/TerritoryMap";
 import { useUserLocation } from "@/features/location/useUserLocation";
 import { startRun } from "@/api/runs";
 import { fetchStreets, type StreetSegmentFeature, type BBox } from "@/api/streets";
+import { fetchMyTracksInBbox, type TrackOverlay } from "@/api/tracks";
 import { fetchBalance, type Balances } from "@/api/wallet";
 import { purchaseBoost } from "@/api/boosts";
 import { useActiveRun } from "@/stores/activeRun";
@@ -22,6 +23,7 @@ export default function MapTab() {
   const [selected, setSelected] = useState<StreetSegmentFeature | null>(null);
   const [showBoosts, setShowBoosts] = useState(false);
   const [segments, setSegments] = useState<StreetSegmentFeature[]>([]);
+  const [historyTracks, setHistoryTracks] = useState<TrackOverlay[]>([]);
   const [bbox, setBbox] = useState<BBox | null>(null);
   const [loading, setLoading] = useState(false);
   const [balances, setBalances] = useState<Balances | null>(null);
@@ -47,6 +49,16 @@ export default function MapTab() {
       .then((c) => { if (alive) setSegments(c.features); })
       .catch(() => {})
       .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [bbox]);
+
+  // Load my history tracks for the same bbox so old runs appear as faded lines.
+  useEffect(() => {
+    if (!bbox) return;
+    let alive = true;
+    fetchMyTracksInBbox(bbox)
+      .then((tracks) => { if (alive) setHistoryTracks(tracks); })
+      .catch(() => {});
     return () => { alive = false; };
   }, [bbox]);
 
@@ -96,6 +108,7 @@ export default function MapTab() {
         path={[]}
         center={center}
         userLocation={coord ? { latitude: coord.lat, longitude: coord.lng } : null}
+        historyTracks={historyTracks.map((t) => ({ runId: t.runId, coordinates: t.geometry.coordinates }))}
         onSelect={setSelected}
         onBoundsChanged={onBoundsChanged}
       />
