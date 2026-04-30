@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, KeyboardAvoidingView, Platform, Pressable, Alert } from "react-native";
 import { Link, router } from "expo-router";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
@@ -59,6 +59,23 @@ export default function LoginScreen() {
 
         <Button label="Войти" onPress={onSubmit} loading={submitting} />
 
+        <View className="flex-row items-center gap-3">
+          <View style={{ flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.10)" }} />
+          <Text className="text-subtle text-xs">или</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.10)" }} />
+        </View>
+
+        <View className="gap-3">
+          <Pressable onPress={() => Alert.alert("Google Sign-In", "Скоро — настраиваем OAuth client")} style={oauthBtn}>
+            <Text style={{ fontSize: 18 }}>🟢</Text>
+            <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>Войти через Google</Text>
+          </Pressable>
+          <Pressable onPress={() => Alert.alert("Apple Sign-In", "Скоро — настраиваем OAuth client")} style={oauthBtn}>
+            <Text style={{ fontSize: 18 }}></Text>
+            <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>Войти через Apple</Text>
+          </Pressable>
+        </View>
+
         <View className="flex-row justify-center gap-2 pt-2">
           <Text className="text-subtle">Нет аккаунта?</Text>
           <Link href="/(auth)/register" className="text-primary font-semibold">
@@ -69,3 +86,15 @@ export default function LoginScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+const oauthBtn = {
+  flexDirection: "row" as const,
+  alignItems: "center" as const,
+  justifyContent: "center" as const,
+  gap: 12,
+  paddingVertical: 14,
+  borderRadius: 14,
+  backgroundColor: "rgba(255,255,255,0.06)",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.10)",
+};
