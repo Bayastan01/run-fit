@@ -36,26 +36,31 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     (async () => {
       hydrateStreak();
       hydrateQuest();
       hydratePrivacy();
       const token = await loadToken();
+      if (!mounted) return;
       if (!token) {
         setUser(null);
         setSentryUser(null);
       } else {
         try {
           const user = await fetchMe();
+          if (!mounted) return;
           setUser(user);
           setSentryUser({ id: user.id, email: user.email });
         } catch {
+          if (!mounted) return;
           setUser(null);
           setSentryUser(null);
         }
       }
-      setReady(true);
+      if (mounted) setReady(true);
     })();
+    return () => { mounted = false; };
   }, [setUser, hydrateStreak, hydrateQuest, hydratePrivacy]);
 
   if (!ready) return null;

@@ -24,7 +24,13 @@ export function TerritoryMap({
 }: TerritoryMapProps) {
   const webRef = useRef<WebView | null>(null);
 
-  const html = useMemo(() => buildHtml(center), []);
+  // HTML rebuild only when the *initial* center changes by >0.001° (~110m).
+  // Re-rendering the WebView every tiny GPS update would reset the layers.
+  const html = useMemo(
+    () => buildHtml(center),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [Math.round(center.latitude * 1000) / 1000, Math.round(center.longitude * 1000) / 1000],
+  );
 
   function onMessage(e: WebViewMessageEvent) {
     try {

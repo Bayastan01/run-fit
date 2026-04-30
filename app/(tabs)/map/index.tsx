@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { View, Text, Pressable, Modal, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, Modal, ActivityIndicator, Alert } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -83,7 +83,10 @@ export default function MapTab() {
       const { runId } = await startRun();
       startActive(runId);
       router.push("/run-active");
-    } catch {}
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Не удалось начать";
+      Alert.alert("Ошибка соединения", `${msg}\n\nПроверь интернет и попробуй ещё раз.`);
+    }
   }
 
   async function onBuyBoost(kind: "EARNINGS_2X" | "SHIELD_24H" | "ENERGY_REFILL") {

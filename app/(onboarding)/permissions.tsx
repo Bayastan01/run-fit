@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text } from "react-native";
+import { View, Text, Alert } from "react-native";
 import { router } from "expo-router";
 import * as Location from "expo-location";
 import { Button } from "@/components/Button";
@@ -11,18 +11,28 @@ export default function Permissions() {
     setBusy(true);
     try {
       const fg = await Location.requestForegroundPermissionsAsync();
-      if (fg.status === "granted") {
-        await Location.requestBackgroundPermissionsAsync().catch(() => null);
+      if (fg.status !== "granted") {
+        Alert.alert(
+          "Геолокация обязательна",
+          "Без доступа к GPS пробежку нельзя записать. Открой Настройки → Run-Fit → Разрешения и включи геолокацию.",
+        );
+        return;
       }
-      // expo-notifications недоступен в Expo Go (SDK 53+);
-      // используем dynamic import чтобы не падать при загрузке модуля.
+      const bg = await Location.requestBackgroundPermissionsAsync().catch(() => ({ status: "denied" as const }));
+      if (bg.status !== "granted") {
+        Alert.alert(
+          "Фоновая геолокация отключена",
+          "Игра будет работать, но при заблокированном экране точки записываться не будут. Можно включить позже в настройках.",
+        );
+      }
+      // expo-notifications недоступен в Expo Go (SDK 53+) — dynamic import.
       try {
         const N = await import("expo-notifications");
         await N.requestPermissionsAsync().catch(() => null);
       } catch {}
+      router.push("/(onboarding)/faction");
     } finally {
       setBusy(false);
-      router.push("/(onboarding)/faction");
     }
   }
 
