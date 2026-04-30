@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator } from "react-nati
 import { router, Stack } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
+import { SkeletonRow } from "@/components/Skeleton";
 import { fetchAchievements, type AchievementsResponse, type AchievementRarity } from "@/api/achievements";
 
 const RARITY: Record<AchievementRarity, { bg: string; fg: string; ru: string }> = {
@@ -43,7 +44,7 @@ export default function AchievementsScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator color="#00ff88" style={{ marginTop: 60 }} />
+        <SkeletonRow count={5} height={68} />
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}>
           <View className="flex-row flex-wrap gap-3">

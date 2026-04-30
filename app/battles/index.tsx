@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl } 
 import { router, Stack } from "expo-router";
 import { ChevronLeft, Swords, Shield, Trophy } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
+import { SkeletonRow } from "@/components/Skeleton";
 import { listBattles, type Battle } from "@/api/battles";
 import { useAuth } from "@/stores/auth";
 
@@ -23,6 +24,20 @@ export default function BattlesScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Live polling — refresh every 20 s while screen is mounted, so the
+  // distance bars and timers update without manual pull.
+  useEffect(() => {
+    const t = setInterval(() => { void load(); }, 20_000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  // 1-second tick just for the countdown labels.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const active = battles.filter((b) => b.status === "ACTIVE" || b.status === "SCHEDULED");
   const resolved = battles.filter((b) => b.status === "RESOLVED");
@@ -46,7 +61,7 @@ export default function BattlesScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor="#00ff88" />}
       >
         {loading && battles.length === 0 ? (
-          <ActivityIndicator color="#00ff88" />
+          <SkeletonRow count={5} height={68} />
         ) : (
           <>
             <Section title="Активные" count={active.length}>
@@ -58,7 +73,7 @@ export default function BattlesScreen() {
                 </GlassCard>
               ) : (
                 active.map((b) => (
-                  <BattleCard key={b.id} battle={b} userId={user?.id ?? ""} />
+                  <BattleCard key={b.id} battle={b} userId={user?.id ?? ""} now={now} />
                 ))
               )}
             </Section>
@@ -66,7 +81,7 @@ export default function BattlesScreen() {
             {resolved.length > 0 && (
               <Section title="Завершённые" count={resolved.length}>
                 {resolved.map((b) => (
-                  <BattleCard key={b.id} battle={b} userId={user?.id ?? ""} />
+                  <BattleCard key={b.id} battle={b} userId={user?.id ?? ""} now={now} />
                 ))}
               </Section>
             )}
@@ -89,7 +104,7 @@ function Section({ title, count, children }: { title: string; count: number; chi
   );
 }
 
-function BattleCard({ battle, userId }: { battle: Battle; userId: string }) {
+function BattleCard({ battle, userId, now }: { battle: Battle; userId: string; now: number }) {
   const isAttacker = battle.attackerUserId === userId;
   const myDist = isAttacker ? battle.attackerDistanceM : battle.defenderDistanceM;
   const oppDist = isAttacker ? battle.defenderDistanceM : battle.attackerDistanceM;
@@ -97,10 +112,16 @@ function BattleCard({ battle, userId }: { battle: Battle; userId: string }) {
 
   const totalDist = myDist + oppDist;
   const myShare = totalDist > 0 ? (myDist / totalDist) * 100 : 50;
+  // Need 1.2× more than opponent to win (server constant) — show how
+  // many extra metres are required.
+  const requiredLead = Math.max(0, oppDist * 1.2 - myDist);
 
-  const expiresIn = new Date(battle.expiresAt).getTime() - Date.now();
+  const expiresIn = new Date(battle.expiresAt).getTime() - now;
   const expiresHours = Math.max(0, Math.floor(expiresIn / 3_600_000));
   const expiresMin = Math.max(0, Math.floor((expiresIn % 3_600_000) / 60_000));
+  const expiresSec = Math.max(0, Math.floor((expiresIn % 60_000) / 1_000));
+  const urgent = expiresIn > 0 && expiresIn < 60 * 60_000;
+  const timeColor = urgent ? "#ef4444" : "#a1a1aa";
 
   return (
     <GlassCard padding={16}>
@@ -117,10 +138,12 @@ function BattleCard({ battle, userId }: { battle: Battle; userId: string }) {
           <Text className="text-white font-semibold">
             {isAttacker ? "Ты атакуешь" : "Ты защищаешь"}
           </Text>
-          <Text className="text-subtle text-xs">
+          <Text style={{ color: battle.status === "RESOLVED" ? "#a1a1aa" : timeColor, fontSize: 12, fontWeight: urgent ? "700" : "400" }}>
             {battle.status === "RESOLVED"
               ? `Завершена ${new Date(battle.resolvedAt!).toLocaleString("ru-RU", { day: "2-digit", month: "short" })}`
-              : `Осталось ${expiresHours}ч ${expiresMin}м`}
+              : expiresIn <= 0
+                ? "⏱ резолв в течение 5 мин"
+                : `⏱ ${expiresHours}ч ${expiresMin}м ${expiresSec.toString().padStart(2, "0")}с`}
           </Text>
         </View>
         {battle.status === "RESOLVED" && won && <Trophy size={20} color="#ffd700" />}
@@ -133,6 +156,12 @@ function BattleCard({ battle, userId }: { battle: Battle; userId: string }) {
         <Text className="text-subtle text-xs">Ты: {(myDist / 1000).toFixed(2)} км</Text>
         <Text className="text-subtle text-xs">Соперник: {(oppDist / 1000).toFixed(2)} км</Text>
       </View>
+
+      {battle.status !== "RESOLVED" && requiredLead > 0 && (
+        <Text style={{ color: "#f59e0b", fontSize: 11, marginTop: 6 }}>
+          Нужно ещё +{requiredLead.toFixed(0)} м для победы (1.2× преимущество)
+        </Text>
+      )}
 
       {battle.status === "RESOLVED" && (
         <View className="mt-3">

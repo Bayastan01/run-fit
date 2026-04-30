@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl } 
 import { router, Stack } from "expo-router";
 import { ChevronLeft, Trophy, Crown } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
+import { SkeletonRow } from "@/components/Skeleton";
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardScope } from "@/api/leaderboards";
 import { useAuth } from "@/stores/auth";
 
@@ -73,7 +74,7 @@ export default function LeaderboardsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(scope); }} tintColor="#00ff88" />}
       >
         {loading ? (
-          <ActivityIndicator color="#00ff88" />
+          <SkeletonRow count={6} height={68} />
         ) : items.length === 0 ? (
           <GlassCard padding={20}>
             <View className="items-center gap-2">

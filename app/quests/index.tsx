@@ -4,6 +4,7 @@ import { router, Stack } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { ChevronLeft, Target, CheckCircle2, Gift } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
+import { SkeletonRow } from "@/components/Skeleton";
 import { fetchDailyQuests, claimQuest, type DailyQuest } from "@/api/quests";
 
 export default function QuestsScreen() {
@@ -53,7 +54,7 @@ export default function QuestsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor="#00ff88" />}
       >
         {loading ? (
-          <ActivityIndicator color="#00ff88" />
+          <SkeletonRow count={5} height={68} />
         ) : (
           items.map((q) => {
             const claimed = !!q.claimedAt;

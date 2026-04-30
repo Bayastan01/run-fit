@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl } 
 import { router, Stack } from "expo-router";
 import { ChevronLeft, Crown, Users, MapPin } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
+import { SkeletonRow } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { fetchFactionWars, type FactionStat } from "@/api/factionWars";
 import { useAuth } from "@/stores/auth";
@@ -49,7 +50,7 @@ export default function FactionWarsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor="#00ff88" />}
       >
         {loading ? (
-          <ActivityIndicator color="#00ff88" />
+          <SkeletonRow count={5} height={68} />
         ) : items.length === 0 ? (
           <EmptyState
             icon={<Crown size={32} color="#a1a1aa" />}

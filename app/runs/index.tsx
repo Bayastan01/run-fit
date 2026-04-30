@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, ActivityIndicator, RefreshControl } 
 import { router, Stack } from "expo-router";
 import { ChevronLeft, MapPin, Clock, Zap } from "lucide-react-native";
 import { GlassCard } from "@/components/GlassCard";
+import { SkeletonRow } from "@/components/Skeleton";
 import { listRuns, type RunListItem } from "@/api/runs";
 
 export default function RunsHistoryScreen() {
@@ -50,7 +51,7 @@ export default function RunsHistoryScreen() {
         }}
       >
         {loading && runs.length === 0 ? (
-          <ActivityIndicator color="#00ff88" />
+          <SkeletonRow count={5} height={68} />
         ) : runs.length === 0 ? (
           <GlassCard padding={24}>
             <Text className="text-subtle text-center">Ещё не было пробежек. Жми старт на карте.</Text>
